@@ -59,9 +59,9 @@ fclose(fid);
 
 
 %Visualization turned OFF
-cd autoCornerFinder;
+cd autoMarkerFinder;
 
-callString = (['FindCorners.exe -w ' num2str(calib_data.n_sq_x+1) ' -h ' num2str(calib_data.n_sq_y+1) ' -m ' num2str((calib_data.n_sq_x+1) * (calib_data.n_sq_y+1)) ' pictures.txt']);
+callString = (['FindMarkers -w ' num2str(calib_data.n_sq_x+1) ' -h ' num2str(calib_data.n_sq_y+1) ' -m ' num2str((calib_data.n_sq_x+1) * (calib_data.n_sq_y+1)) ' pictures.txt']);
 
 if ~ispc %if not Windows
     callString = ['./' callString];

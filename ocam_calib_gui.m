@@ -35,18 +35,19 @@ title_figure = 'Omnidirectional Camera Calibration Toolbox';
 
 cell_list{1,1} = {'Read names','data_calib(calib_data);'};
 cell_list{1,2} = {'Extract grid corners','click_calib(calib_data);'};
-cell_list{1,3} = {'Calibration','calibration(calib_data);'};
-cell_list{2,1} = {'Find center','findcenter(calib_data);'};
-cell_list{2,2} = {'Calibration Refinement','optimizefunction(calib_data);'};
-cell_list{2,3} = {'Reproject on images','reproject_calib(calib_data);'};
-cell_list{3,1} = {'Show Extrinsic','create_simulation_points(calib_data);'};
-cell_list{3,2} = {'Analyse error','analyse_error(calib_data);'};
-cell_list{3,3} = {'Recomp. corners','recomp_corner_calib(calib_data);'};
-cell_list{4,1} = {'Show calib results','show_calib_results(calib_data);'};
-cell_list{4,2} = {'Save','saving_calib(calib_data);'};
-cell_list{4,3} = {'Load','loading_calib;'};
-cell_list{5,1} = {'Export Data','exportData2TXT(calib_data);'};
-cell_list{5,2} = {'Exit',['clear; disp(''Bye. To run again, type ocam_calib.''); close(' num2str(fig_number) ');']}; %{'Exit','calib_gui;'};
+cell_list{1,3} = {'Extract UV markers','click_calib_uv(calib_data);'};
+cell_list{2,1} = {'Calibration','calibration(calib_data);'};
+cell_list{2,2} = {'Find center','findcenter(calib_data);'};
+cell_list{2,3} = {'Calibration Refinement','optimizefunction(calib_data);'};
+cell_list{3,1} = {'Reproject on images','reproject_calib(calib_data);'};
+cell_list{3,2} = {'Show Extrinsic','create_simulation_points(calib_data);'};
+cell_list{3,3} = {'Analyse error','analyse_error(calib_data);'};
+cell_list{4,1} = {'Recomp. corners','recomp_corner_calib(calib_data);'};
+cell_list{4,2} = {'Show calib results','show_calib_results(calib_data);'};
+cell_list{4,3} = {'Save','saving_calib(calib_data);'};
+cell_list{5,1} = {'Load','loading_calib;'};
+cell_list{5,2} = {'Export Data','exportData2TXT(calib_data);'};
+cell_list{5,3} = {'Exit',['clear; disp(''Bye. To run again, type ocam_calib.''); close(' num2str(fig_number) ');']};
 
 
 

@@ -18,7 +18,7 @@
 %   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
 %   USA
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function click_calib(calib_data)
+function click_calib_uv(calib_data)
 
 %if isnan(calib_data.dX_default),    calib_data.dX_default = [];end;
 %if isnan(calib_data.dY_default),    calib_data.dY_default = [];end;
@@ -284,7 +284,7 @@ else
     count = 0;
     for kk = ima_numbers
         
-        [callBack, x, y]  = get_checkerboard_corners(kk,use_corner_find,calib_data);
+        [callBack, x, y]  = get_uv_markers(kk,use_corner_find,calib_data);
         
         if callBack == 1
             count = count + 1;

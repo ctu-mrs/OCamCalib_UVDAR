@@ -26,6 +26,8 @@ If you use this code, please cite the following articles:
 
 \************************************************************************************/
 
+#define index2d(X, Y) (m_imCurr->cols * (Y) + (X))
+
 //===========================================================================
 // CODE STARTS HERE
 //===========================================================================
@@ -48,7 +50,7 @@ using std::ifstream;
 
 
 //Ming #define VIS 1
-#define VIS 0
+#define VIS 1
 // Turn on visualization
 #define TIMER 0					// Elapse the function duration times
 
@@ -118,18 +120,21 @@ static int icvCleanFoundConnectedQuads( int quad_count, CvCBQuad **quads,
 static int mrWriteCorners( CvCBQuad **output_quads, int count, CvSize pattern_size,
 						   int min_number_of_corners );
 
+static void initFAST(std::vector<cv::Point> &fastPoints, std::vector<cv::Point> &fastInterior);
+
+static void getUVPoints(const CvMat *i_imCurr, std::vector<cv::Point2i> &outvec, int threshVal);
 
 
 //===========================================================================
 // MAIN FUNCTION
 //===========================================================================
-int cvFindChessboardCorners3( const void* arr, CvSize pattern_size,
+int cvFindUVMarkers( const void* arr, CvSize pattern_size,
                              CvPoint2D32f* out_corners, int* out_corner_count,
                              int min_number_of_corners )
 {
 //START TIMER
 #if TIMER
-	ofstream FindChessboardCorners2;
+	ofstream FindUVMarkersStream;
     time_t  start_time = clock();
 #endif
 
@@ -152,6 +157,7 @@ int cvFindChessboardCorners3( const void* arr, CvSize pattern_size,
     CvCBCorner *corners			=  0;
 	CvCBCorner **corner_group	=  0;
 	CvCBQuad **output_quad_group = 0;
+  std::vector<cv::Point2i> uv_points = std::vector<cv::Point2i>();
 	
     // debug trial. Martin Rufli, 28. Ocober, 2008
 	int block_size = 0;
@@ -162,7 +168,7 @@ int cvFindChessboardCorners3( const void* arr, CvSize pattern_size,
 
 	
 	// Set openCV function name and label the function start
-    CV_FUNCNAME( "cvFindChessBoardCornerGuesses2" );
+    CV_FUNCNAME( "cvFindUVMarkers" );
     __CV_BEGIN__;
 
 
@@ -239,10 +245,25 @@ int cvFindChessboardCorners3( const void* arr, CvSize pattern_size,
 // EVALUATE TIMER
 #if TIMER
 	float time0_1 = (float) (clock() - start_time) / CLOCKS_PER_SEC;
-	FindChessboardCorners2.open("timer/FindChessboardCorners2.txt", ofstream::app);
-	FindChessboardCorners2 << "Time 0.1 for cvFindChessboardCorners2 was " << time0_1 << " seconds." << endl;
+	FindUVMarkersStream.open("timer/FindUVMarkers.txt", ofstream::app);
+	FindUVMarkersStream << "Time 0.1 for cvFindChessboardCorners2 was " << time0_1 << " seconds." << endl;
 #endif
 
+
+//V: START EDITING HERE
+
+
+  CV_CALL( getUVPoints(img, uv_points, 150) );
+
+//VISUALIZATION--------------------------------------------------------------
+#if VIS
+ 		cvNamedWindow( "Original Image", 1 );
+		cvShowImage( "Original Image", img);
+		//cvSaveImage("pictureVis/OrigImg.png", img);
+		cvWaitKey(0);
+#endif
+//END------------------------------------------------------------------------
+//
 	// For image binarization (thresholding)
     // we use an adaptive threshold with a gaussian mask
 	// ATTENTION: Gaussian thresholding takes MUCH more time than Mean thresholding!
@@ -265,17 +286,8 @@ int cvFindChessboardCorners3( const void* arr, CvSize pattern_size,
 // EVALUATE TIMER
 #if TIMER
 		float time0_2 = (float) (clock() - start_time) / CLOCKS_PER_SEC;
-		FindChessboardCorners2 << "Time 0.2 for cvFindChessboardCorners2 was " << time0_2 << " seconds." << endl;
+		FindUVMarkersStream << "Time 0.2 for cvFindUVMarkers was " << time0_2 << " seconds." << endl;
 #endif
-
-//VISUALIZATION--------------------------------------------------------------
-#if VIS
- 		cvNamedWindow( "Original Image", 1 );
-		cvShowImage( "Original Image", img);
-		//cvSaveImage("pictureVis/OrigImg.png", img);
-		cvWaitKey(0);
-#endif
-//END------------------------------------------------------------------------
 
 
 		// MARTIN's Code
@@ -302,18 +314,9 @@ int cvFindChessboardCorners3( const void* arr, CvSize pattern_size,
 // EVALUATE TIMER
 #if TIMER
 		float time0_3 = (float) (clock() - start_time) / CLOCKS_PER_SEC;
-		FindChessboardCorners2 << "Time 0.3 for cvFindChessboardCorners2 was " << time0_3 << " seconds." << endl;
+		FindUVMarkersStream << "Time 0.3 for cvFindUVMarkers was " << time0_3 << " seconds." << endl;
 #endif
 
-//VISUALIZATION--------------------------------------------------------------
-#if VIS
-		cvNamedWindow( "After adaptive Threshold (and Dilation)", 1 );
-		cvShowImage( "After adaptive Threshold (and Dilation)", thresh_img);
-		//cvSaveImage("pictureVis/afterDilation.png", thresh_img);
-		cvWaitKey(0);
-#endif
-//END------------------------------------------------------------------------ 
-  
 
         // In order to find rectangles that go to the edge, we draw a white
 		// line around the image edge. Otherwise FindContours will miss those 
@@ -332,39 +335,8 @@ int cvFindChessboardCorners3( const void* arr, CvSize pattern_size,
 // EVALUATE TIMER
 #if TIMER
 		float time0_4 = (float) (clock() - start_time) / CLOCKS_PER_SEC;
-		FindChessboardCorners2 << "Time 0.4 for cvFindChessboardCorners2 was " << time0_4 << " seconds." << endl;
+		FindUVMarkersStream << "Time 0.4 for cvFindUVMarkers was " << time0_4 << " seconds." << endl;
 #endif
-
-//VISUALIZATION--------------------------------------------------------------
-#if VIS
-  		cvNamedWindow( "all found quads per dilation run", 1 );
-		IplImage* imageCopy2 = cvCreateImage( cvGetSize(thresh_img), 8, 1 );
-		IplImage* imageCopy22 = cvCreateImage( cvGetSize(thresh_img), 8, 3 );
-		cvCopy( thresh_img, imageCopy2);
-		cvCvtColor( imageCopy2, imageCopy22, CV_GRAY2BGR );
-
-		for( int kkk = 0; kkk < quad_count; kkk++ )
-		{
-			CvCBQuad* print_quad = &quads[kkk];
-			CvPoint pt[4];
-			pt[0].x = (int)print_quad->corners[0]->pt.x;
-			pt[0].y = (int)print_quad->corners[0]->pt.y;
-			pt[1].x = (int)print_quad->corners[1]->pt.x;
-			pt[1].y = (int)print_quad->corners[1]->pt.y;
-			pt[2].x = (int)print_quad->corners[2]->pt.x;
-			pt[2].y = (int)print_quad->corners[2]->pt.y;
-			pt[3].x = (int)print_quad->corners[3]->pt.x;
-			pt[3].y = (int)print_quad->corners[3]->pt.y;
-			cvLine( imageCopy22, pt[0], pt[1], CV_RGB(255,255,0), 1, 8 );
-			cvLine( imageCopy22, pt[1], pt[2], CV_RGB(255,255,0), 1, 8 );
-			cvLine( imageCopy22, pt[2], pt[3], CV_RGB(255,255,0), 1, 8 );
-			cvLine( imageCopy22, pt[3], pt[0], CV_RGB(255,255,0), 1, 8 );
-		}
-		cvShowImage( "all found quads per dilation run", imageCopy22);
-		//cvSaveImage("pictureVis/allFoundQuads.png", imageCopy22);
-		cvWaitKey(0);
-#endif
-//END------------------------------------------------------------------------
 
 		
         // The following function finds and assigns neighbor quads to every 
@@ -372,34 +344,6 @@ int cvFindChessboardCorners3( const void* arr, CvSize pattern_size,
 		// prerequisites
         CV_CALL( mrFindQuadNeighbors2( quads, quad_count, dilations));
 		
-//VISUALIZATION--------------------------------------------------------------
-#if VIS
-		cvNamedWindow( "quads with neighbors", 1 );
-		IplImage* imageCopy3 = cvCreateImage( cvGetSize(thresh_img), 8, 3 );
-		cvCopy( imageCopy22, imageCopy3);
-		CvPoint pt;
-		int scale = 0;
-		int line_type = CV_AA;
-		CvScalar color = {{0,0,255}};
-		for( int kkk = 0; kkk < quad_count; kkk++ )
-		{
-			CvCBQuad* print_quad2 = &quads[kkk];
-			for( int kkkk = 0; kkkk < 4; kkkk++ )
-			{
-				if( print_quad2->neighbors[kkkk] )
-				{
-					pt.x = (int)(print_quad2->corners[kkkk]->pt.x);
-					pt.y = (int)(print_quad2->corners[kkkk]->pt.y);
-					cvCircle( imageCopy3, pt, 3, color, 1, line_type, scale);
-				}
-			}
-		}
-		cvShowImage( "quads with neighbors", imageCopy3);
-		//cvSaveImage("pictureVis/allFoundNeighbors.png", imageCopy3);
-		cvWaitKey(0);
-#endif
-//END------------------------------------------------------------------------
-
 
 		// Allocate memory
         CV_CALL( quad_group = (CvCBQuad**)cvAlloc( sizeof(quad_group[0]) * quad_count));
@@ -416,99 +360,46 @@ int cvFindChessboardCorners3( const void* arr, CvSize pattern_size,
 		// quadrangles by minimizing the convex hull of the remaining pattern.
         for( group_idx = 0; ; group_idx++ )
         {
-            int count;
-            CV_CALL( count = icvFindConnectedQuads( quads, quad_count, quad_group, group_idx, storage, dilations ));
+          int count;
+          CV_CALL( count = icvFindConnectedQuads( quads, quad_count, quad_group, group_idx, storage, dilations ));
 
-            if( count == 0 )
-                break;
-        
-			CV_CALL( count = icvCleanFoundConnectedQuads( count, quad_group, pattern_size ));
+          if( count == 0 )
+            break;
+
+          CV_CALL( count = icvCleanFoundConnectedQuads( count, quad_group, pattern_size ));
 
 
-			// MARTIN's Code
-			// To save computational time, only proceed, if the number of
-			// found quads during this dilation run is larger than the 
-			// largest previous found number
-			if( count >= max_count)
-			{
-				// set max_count to its new value
-				max_count = count;
-				max_dilation_run_ID = dilations;
-			
-				// The following function labels all corners of every quad 
-				// with a row and column entry.
-				// "count" specifies the number of found quads in "quad_group"
-				// with group identifier "group_idx"
-				// The last parameter is set to "true", because this is the
-				// first function call and some initializations need to be
-				// made.
-				mrLabelQuadGroup( quad_group, max_count, pattern_size, true );
-				
+          // MARTIN's Code
+          // To save computational time, only proceed, if the number of
+          // found quads during this dilation run is larger than the 
+          // largest previous found number
+          if( count >= max_count)
+          {
+            // set max_count to its new value
+            max_count = count;
+            max_dilation_run_ID = dilations;
 
-//VISUALIZATION--------------------------------------------------------------
-#if VIS
-				// display all corners in INCREASING ROW AND COLUMN ORDER
-				cvNamedWindow( "Corners in increasing order", 1 );
-				IplImage* imageCopy11 = cvCreateImage( cvGetSize(thresh_img), 8, 3 );
-				cvCopy( imageCopy22, imageCopy11);
-				// Assume min and max rows here, since we are outside of the
-				// relevant function
-				int min_row = -15;
-				int max_row = 15;
-				int min_column = -15;
-				int max_column = 15;
-				for(int i = min_row; i <= max_row; i++)
-				{
-						for(int j = min_column; j <= max_column; j++)
-						{
-							for(int k = 0; k < count; k++)
-							{
-								for(int l = 0; l < 4; l++)
-								{
-									if( ((quad_group[k])->corners[l]->row == i) && ((quad_group[k])->corners[l]->column == j) )
-									{
-										// draw the row and column numbers
-										char str[255];
-										sprintf(str,"%i/%i",i,j);
-										CvFont font;
-										cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.2, 0.2, 0, 1);
-										CvPoint ptt;
-										ptt.x = (int) quad_group[k]->corners[l]->pt.x;
-										ptt.y = (int) quad_group[k]->corners[l]->pt.y;
-										// Mark central corners with a different color than 
-										// border corners
-										if ((quad_group[k])->corners[l]->needsNeighbor == false)
-										{
-											cvPutText(imageCopy11, str, ptt, &font, CV_RGB(0,255,0));
-										}
-										else
-										{
-											cvPutText(imageCopy11, str, ptt, &font, CV_RGB(255,0,0));
-										}
-										cvShowImage( "Corners in increasing order", imageCopy11);
-										//cvSaveImage("pictureVis/CornersIncreasingOrder.tif", imageCopy11);
-										//cvWaitKey(0);
-									}
-								}
-							}
-						}
-				}
-				cvWaitKey(0);
-#endif
-//END------------------------------------------------------------------------
+            // The following function labels all corners of every quad 
+            // with a row and column entry.
+            // "count" specifies the number of found quads in "quad_group"
+            // with group identifier "group_idx"
+            // The last parameter is set to "true", because this is the
+            // first function call and some initializations need to be
+            // made.
+            mrLabelQuadGroup( quad_group, max_count, pattern_size, true );
 
-	
-				// Allocate memory
-				CV_CALL( output_quad_group = (CvCBQuad**)cvAlloc( sizeof(output_quad_group[0]) * ((pattern_size.height+2) * (pattern_size.width+2)) ));
-				
-				
-				// The following function copies every member of "quad_group"
-				// to "output_quad_group", because "quad_group" will be 
-				// overwritten during the next loop pass.
-				// "output_quad_group" is a true copy of "quad_group" and 
-				// later used for output
-				mrCopyQuadGroup( quad_group, output_quad_group, max_count );
-			}
+
+            // Allocate memory
+            CV_CALL( output_quad_group = (CvCBQuad**)cvAlloc( sizeof(output_quad_group[0]) * ((pattern_size.height+2) * (pattern_size.width+2)) ));
+
+
+            // The following function copies every member of "quad_group"
+            // to "output_quad_group", because "quad_group" will be 
+            // overwritten during the next loop pass.
+            // "output_quad_group" is a true copy of "quad_group" and 
+            // later used for output
+            mrCopyQuadGroup( quad_group, output_quad_group, max_count );
+          }
         }
 		
 
@@ -521,8 +412,8 @@ int cvFindChessboardCorners3( const void* arr, CvSize pattern_size,
 // EVALUATE TIMER
 #if TIMER
 	float time1 = (float) (clock() - start_time) / CLOCKS_PER_SEC;
-	FindChessboardCorners2.open("timer/FindChessboardCorners2.txt", ofstream::app);
-	FindChessboardCorners2 << "Time 1 for cvFindChessboardCorners2 was " << time1 << " seconds." << endl;
+	FindUVMarkersStream.open("timer/FindUVMarkers.txt", ofstream::app);
+	FindUVMarkersStream << "Time 1 for cvFindUVMarkers was " << time1 << " seconds." << endl;
 #endif
 
 	// If enough corners have been found already, then there is no need for PART 2 ->__CV_EXIT__
@@ -564,114 +455,11 @@ int cvFindChessboardCorners3( const void* arr, CvSize pattern_size,
         cvRectangle( thresh_img, cvPoint(0,0), cvPoint(thresh_img->cols-1,
                      thresh_img->rows-1), CV_RGB(255,255,255), 3, 8);
 
-//VISUALIZATION--------------------------------------------------------------
-#if VIS
-		cvNamedWindow( "PART2: Starting Point", 1 );
-		IplImage* imageCopy23 = cvCreateImage( cvGetSize(thresh_img), 8, 3 );
-		cvCvtColor( thresh_img, imageCopy23, CV_GRAY2BGR );
-		
-		CvPoint *pt = new CvPoint[4];
-		for( int kkk = 0; kkk < max_count; kkk++ )
-		{ 
-			CvCBQuad* print_quad2 = output_quad_group[kkk];
-			for( int kkkk = 0; kkkk < 4; kkkk++ )
-			{
-				pt[kkkk].x = (int) print_quad2->corners[kkkk]->pt.x;
-				pt[kkkk].y = (int) print_quad2->corners[kkkk]->pt.y;
-			}
-			// draw a filled polygon
-			cvFillConvexPoly ( imageCopy23, pt, 4, CV_RGB(255*0.1,255*0.25,255*0.6));
-		}
-		// indicate the dilation run
-		char str[255];
-		sprintf(str,"Dilation Run No.: %i",dilations);
-		CvFont font;
-		cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 2);
-		//cvPutText(imageCopy23, str, cvPoint(20,20), &font, CV_RGB(0,255,0));
-
-		cvShowImage( "PART2: Starting Point", imageCopy23);
-		cvSaveImage("pictureVis/part2Start.png", imageCopy23);
-		cvWaitKey(0);
-#endif
-//END------------------------------------------------------------------------
-
 
         CV_CALL( quad_count = icvGenerateQuads( &quads, &corners, storage, thresh_img, flags, dilations, false ));
         if( quad_count <= 0 )
             continue;
 			
-
-//VISUALIZATION--------------------------------------------------------------
-#if VIS
-		//draw on top of previous image
-		for( int kkk = 0; kkk < quad_count; kkk++ )
-		{
-			CvCBQuad* print_quad = &quads[kkk];
-
-			CvPoint pt[4];
-			pt[0].x = (int)print_quad->corners[0]->pt.x;
-			pt[0].y = (int)print_quad->corners[0]->pt.y;
-			pt[1].x = (int)print_quad->corners[1]->pt.x;
-			pt[1].y = (int)print_quad->corners[1]->pt.y;
-			pt[2].x = (int)print_quad->corners[2]->pt.x;
-			pt[2].y = (int)print_quad->corners[2]->pt.y;
-			pt[3].x = (int)print_quad->corners[3]->pt.x;
-			pt[3].y = (int)print_quad->corners[3]->pt.y;
-			cvLine( imageCopy23, pt[0], pt[1], CV_RGB(255,0,0), 1, 8 );
-			cvLine( imageCopy23, pt[1], pt[2], CV_RGB(255,0,0), 1, 8 );
-			cvLine( imageCopy23, pt[2], pt[3], CV_RGB(255,0,0), 1, 8 );
-			cvLine( imageCopy23, pt[3], pt[0], CV_RGB(255,0,0), 1, 8 );
-			//compute center of print_quad
-			int x1 = (pt[0].x + pt[1].x)/2;
-			int y1 = (pt[0].y + pt[1].y)/2;
-			int x2 = (pt[2].x + pt[3].x)/2;
-			int y2 = (pt[2].y + pt[3].y)/2;
-			
-			int x3 = (x1 + x2)/2;
-			int y3 = (y1 + y2)/2;
-			// indicate the quad number in the image
-			char str[255];
-			sprintf(str,"%i",kkk);
-			//CvFont font;
-			//cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 1);
-			//cvPutText(imageCopy23, str, cvPoint(x3,y3), &font, CV_RGB(0,255,255));
-		}
-
-		for( int kkk = 0; kkk < max_count; kkk++ )
-		{
-			CvCBQuad* print_quad = output_quad_group[kkk];
-
-			CvPoint pt[4];
-			pt[0].x = (int)print_quad->corners[0]->pt.x;
-			pt[0].y = (int)print_quad->corners[0]->pt.y;
-			pt[1].x = (int)print_quad->corners[1]->pt.x;
-			pt[1].y = (int)print_quad->corners[1]->pt.y;
-			pt[2].x = (int)print_quad->corners[2]->pt.x;
-			pt[2].y = (int)print_quad->corners[2]->pt.y;
-			pt[3].x = (int)print_quad->corners[3]->pt.x;
-			pt[3].y = (int)print_quad->corners[3]->pt.y;
-			//compute center of print_quad
-			int x1 = (pt[0].x + pt[1].x)/2;
-			int y1 = (pt[0].y + pt[1].y)/2;
-			int x2 = (pt[2].x + pt[3].x)/2;
-			int y2 = (pt[2].y + pt[3].y)/2;
-			
-			int x3 = (x1 + x2)/2;
-			int y3 = (y1 + y2)/2;
-
-			// indicate the quad number in the image
-			char str[255];
-			sprintf(str,"%i",kkk);
-			//CvFont font;
-			//cvInitFont(&font, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5, 0, 1);
-			//cvPutText(imageCopy23, str, cvPoint(x3,y3), &font, CV_RGB(0,0,0));
-		}
-
-		cvShowImage( "PART2: Starting Point", imageCopy23);
-		cvSaveImage("pictureVis/part2StartAndNewQuads.png", imageCopy23);
-		cvWaitKey(0);
-#endif
-//END------------------------------------------------------------------------
 
 		
 		// MARTIN's Code
@@ -689,64 +477,6 @@ int cvFindChessboardCorners3( const void* arr, CvSize pattern_size,
             							 output_quad_group, max_count, max_dilation_run_ID );
 			
 
-//VISUALIZATION--------------------------------------------------------------
-#if VIS
-			if( feedBack == -1)
-			{
-				CvCBQuad* remember_quad;
-				for( int kkk = max_count; kkk < max_count+1; kkk++ )
-				{
-					CvCBQuad* print_quad = output_quad_group[kkk];
-					remember_quad = print_quad;
-					CvPoint pt[4];
-					pt[0].x = (int)print_quad->corners[0]->pt.x;
-					pt[0].y = (int)print_quad->corners[0]->pt.y;
-					pt[1].x = (int)print_quad->corners[1]->pt.x;
-					pt[1].y = (int)print_quad->corners[1]->pt.y;
-					pt[2].x = (int)print_quad->corners[2]->pt.x;
-					pt[2].y = (int)print_quad->corners[2]->pt.y;
-					pt[3].x = (int)print_quad->corners[3]->pt.x;
-					pt[3].y = (int)print_quad->corners[3]->pt.y;
-					cvLine( imageCopy23, pt[0], pt[1], CV_RGB(255,0,0), 2, 8 );
-					cvLine( imageCopy23, pt[1], pt[2], CV_RGB(255,0,0), 2, 8 );
-					cvLine( imageCopy23, pt[2], pt[3], CV_RGB(255,0,0), 2, 8 );
-					cvLine( imageCopy23, pt[3], pt[0], CV_RGB(255,0,0), 2, 8 );
-				}
-
-				cvWaitKey(0);
-				// also draw the corner to which it is connected
-				// Remember it is not yet completely linked!!!
-				for( int kkk = 0; kkk < max_count; kkk++ )
-				{
-					CvCBQuad* print_quad = output_quad_group[kkk];
-
-					for( int kkkk = 0; kkkk < 4; kkkk++)
-					{
-						if(print_quad->neighbors[kkkk] == remember_quad)
-						{
-							CvPoint pt[4];
-							pt[0].x = (int)print_quad->corners[0]->pt.x;
-							pt[0].y = (int)print_quad->corners[0]->pt.y;
-							pt[1].x = (int)print_quad->corners[1]->pt.x;
-							pt[1].y = (int)print_quad->corners[1]->pt.y;
-							pt[2].x = (int)print_quad->corners[2]->pt.x;
-							pt[2].y = (int)print_quad->corners[2]->pt.y;
-							pt[3].x = (int)print_quad->corners[3]->pt.x;
-							pt[3].y = (int)print_quad->corners[3]->pt.y;
-							cvLine( imageCopy23, pt[0], pt[1], CV_RGB(255,0,0), 2, 8 );
-							cvLine( imageCopy23, pt[1], pt[2], CV_RGB(255,0,0), 2, 8 );
-							cvLine( imageCopy23, pt[2], pt[3], CV_RGB(255,0,0), 2, 8 );
-							cvLine( imageCopy23, pt[3], pt[0], CV_RGB(255,0,0), 2, 8 );
-						}
-					}
-				}
-				cvShowImage( "PART2: Starting Point", imageCopy23);
-				cvSaveImage("pictureVis/part2StartAndSelectedQuad.png", imageCopy23);
-				cvWaitKey(0);
-			}
-#endif
-//END------------------------------------------------------------------------
-
 
 			// if we have found a new matching quad
 			if (feedBack == -1)
@@ -755,6 +485,7 @@ int cvFindChessboardCorners3( const void* arr, CvSize pattern_size,
 				max_count = max_count + 1;
    				mrLabelQuadGroup( output_quad_group, max_count, pattern_size, false );
 
+//V: STOP EDITING HERE
 
 				// write the found corners to output array
 				// Go to __END__, if enough corners have been found
@@ -799,8 +530,8 @@ int cvFindChessboardCorners3( const void* arr, CvSize pattern_size,
 // EVALUATE TIMER
 #if TIMER
 	float time3 = (float) (clock() - start_time) / CLOCKS_PER_SEC;
-	FindChessboardCorners2 << "Time 3 for cvFindChessboardCorners2 was " << time3 << " seconds." << endl;
-	FindChessboardCorners2.close();
+	FindUVMarkersStream << "Time 3 for cvFindChessboardCorners2 was " << time3 << " seconds." << endl;
+	FindUVMarkersStream.close();
 #endif
 
 	// Return found
@@ -1051,7 +782,7 @@ static void mrLabelQuadGroup( CvCBQuad **quad_group, int count, CvSize pattern_s
 
 		// Mark the starting quad's (per definition) upper left corner with
 		//(0,0) and then proceed clockwise
-		// The following labeling sequence enshures a "right coordinate system"
+		// The following labeling sequence ensures a "right coordinate system"
 		(quad_group[max_id])->labeled = true;
 
 		(quad_group[max_id])->corners[0]->row = 0;
@@ -1073,7 +804,7 @@ static void mrLabelQuadGroup( CvCBQuad **quad_group, int count, CvSize pattern_s
 		flag_changed = false;
 
 
-		// Go through all quads top down is faster, since unlabeled quads will
+		// Going through all quads top down is faster, since unlabeled quads will
 		// be inserted at the end of the list
 		for( int i = (count-1); i >= 0; i-- )
 		{
@@ -1295,7 +1026,7 @@ static void mrLabelQuadGroup( CvCBQuad **quad_group, int count, CvSize pattern_s
 
 	// Bordercorners don't need any neighbors, if the pattern size in the 
 	// respective direction is reached
-	// The only time we can make shure that the target pattern size is reached in a given
+	// The only time we can make sure that the target pattern size is reached in a given
 	// dimension, is when the larger side has reached the target size in the maximal
 	// direction, or if the larger side is larger than the smaller target size and the 
 	// smaller side equals the smaller target size
@@ -1421,24 +1152,24 @@ static void mrLabelQuadGroup( CvCBQuad **quad_group, int count, CvSize pattern_s
 			{
 				for( int l = 0; l < 4; l++ )
 				{
-					if ( (quad_group[k])->corners[l]->column == min_column || (quad_group[k])->corners[l]->column == max_column)
-					{
-						// Needs no neighbor anymore
-						(quad_group[k])->corners[l]->needsNeighbor = false;
-					}
-				}
-			}
-		}
-	}
-		
-		
-	
-// EVALUATE TIMER
+          if ( (quad_group[k])->corners[l]->column == min_column || (quad_group[k])->corners[l]->column == max_column)
+          {
+            // Needs no neighbor anymore
+            (quad_group[k])->corners[l]->needsNeighbor = false;
+          }
+        }
+      }
+    }
+  }
+
+
+
+  // EVALUATE TIMER
 #if TIMER
-	float time = (float) (clock() - start_time) / CLOCKS_PER_SEC;
-	LabelQuadGroup.open("timer/LabelQuadGroup.txt", ofstream::app);
-	LabelQuadGroup << "Time for mrLabelQuadGroup was " << time << " seconds." << endl;
-	LabelQuadGroup.close();
+  float time = (float) (clock() - start_time) / CLOCKS_PER_SEC;
+  LabelQuadGroup.open("timer/LabelQuadGroup.txt", ofstream::app);
+  LabelQuadGroup << "Time for mrLabelQuadGroup was " << time << " seconds." << endl;
+  LabelQuadGroup.close();
 #endif
 
 }
@@ -1453,24 +1184,24 @@ static void mrLabelQuadGroup( CvCBQuad **quad_group, int count, CvSize pattern_s
 // This information is then again needed in PART 2 of the MAIN LOOP
 static void mrCopyQuadGroup( CvCBQuad **temp_quad_group, CvCBQuad **for_out_quad_group, int count )
 {
-	for (int i = 0; i < count; i++)
-	{
-		for_out_quad_group[i]				= new CvCBQuad;
-		for_out_quad_group[i]->count		= temp_quad_group[i]->count;
-		for_out_quad_group[i]->edge_len		= temp_quad_group[i]->edge_len;
-		for_out_quad_group[i]->group_idx	= temp_quad_group[i]->group_idx;
-		for_out_quad_group[i]->labeled		= temp_quad_group[i]->labeled;
-		
-		for (int j = 0; j < 4; j++)
-		{
-			for_out_quad_group[i]->corners[j]					= new CvCBCorner;
-			for_out_quad_group[i]->corners[j]->pt.x				= temp_quad_group[i]->corners[j]->pt.x;
-			for_out_quad_group[i]->corners[j]->pt.y				= temp_quad_group[i]->corners[j]->pt.y;
-			for_out_quad_group[i]->corners[j]->row				= temp_quad_group[i]->corners[j]->row;
-			for_out_quad_group[i]->corners[j]->column			= temp_quad_group[i]->corners[j]->column;
-			for_out_quad_group[i]->corners[j]->needsNeighbor	= temp_quad_group[i]->corners[j]->needsNeighbor;
-		}
-	}
+  for (int i = 0; i < count; i++)
+  {
+    for_out_quad_group[i]				= new CvCBQuad;
+    for_out_quad_group[i]->count		= temp_quad_group[i]->count;
+    for_out_quad_group[i]->edge_len		= temp_quad_group[i]->edge_len;
+    for_out_quad_group[i]->group_idx	= temp_quad_group[i]->group_idx;
+    for_out_quad_group[i]->labeled		= temp_quad_group[i]->labeled;
+
+    for (int j = 0; j < 4; j++)
+    {
+      for_out_quad_group[i]->corners[j]					= new CvCBCorner;
+      for_out_quad_group[i]->corners[j]->pt.x				= temp_quad_group[i]->corners[j]->pt.x;
+      for_out_quad_group[i]->corners[j]->pt.y				= temp_quad_group[i]->corners[j]->pt.y;
+      for_out_quad_group[i]->corners[j]->row				= temp_quad_group[i]->corners[j]->row;
+      for_out_quad_group[i]->corners[j]->column			= temp_quad_group[i]->corners[j]->column;
+      for_out_quad_group[i]->corners[j]->needsNeighbor	= temp_quad_group[i]->corners[j]->needsNeighbor;
+    }
+  }
 }
 
 
@@ -1482,177 +1213,177 @@ static void mrCopyQuadGroup( CvCBQuad **temp_quad_group, CvCBQuad **for_out_quad
 // icvFindQuadNeighbors
 static void mrFindQuadNeighbors2( CvCBQuad *quads, int quad_count, int dilation)
 {
-//START TIMER
+  //START TIMER
 #if TIMER
-	ofstream FindQuadNeighbors2;
-    time_t  start_time = clock();
+  ofstream FindQuadNeighbors2;
+  time_t  start_time = clock();
 #endif
 
-	// Thresh dilation is used to counter the effect of dilation on the
-	// distance between 2 neighboring corners. Since the distance below is 
-	// computed as its square, we do here the same. Additionally, we take the
-	// conservative assumption that dilation was performed using the 3x3 CROSS
-	// kernel, which coresponds to the 4-neighborhood.
-	const float thresh_dilation = (float)(2*dilation+3)*(2*dilation+3)*2;	// the "*2" is for the x and y component
-    int idx, i, k, j;														// the "3" is for initial corner mismatch
-    float dx, dy, dist;
-	int cur_quad_group = -1;
+  // Thresh dilation is used to counter the effect of dilation on the
+  // distance between 2 neighboring corners. Since the distance below is 
+  // computed as its square, we do here the same. Additionally, we take the
+  // conservative assumption that dilation was performed using the 3x3 CROSS
+  // kernel, which coresponds to the 4-neighborhood.
+  const float thresh_dilation = (float)(2*dilation+3)*(2*dilation+3)*2;	// the "*2" is for the x and y component
+  int idx, i, k, j;														// the "3" is for initial corner mismatch
+  float dx, dy, dist;
+  int cur_quad_group = -1;
 
 
-    // Find quad neighbors
-    for( idx = 0; idx < quad_count; idx++ )
+  // Find quad neighbors
+  for( idx = 0; idx < quad_count; idx++ )
+  {
+    CvCBQuad* cur_quad = &quads[idx];
+
+
+    // Go through all quadrangles and label them in groups
+    // For each corner of this quadrangle
+    for( i = 0; i < 4; i++ )
     {
-        CvCBQuad* cur_quad = &quads[idx];
+      CvPoint2D32f pt;
+      float min_dist = FLT_MAX;
+      int closest_corner_idx = -1;
+      CvCBQuad *closest_quad = 0;
+      CvCBCorner *closest_corner = 0;
+
+      if( cur_quad->neighbors[i] )
+        continue;
+
+      pt = cur_quad->corners[i]->pt;
 
 
-		// Go through all quadrangles and label them in groups
-        // For each corner of this quadrangle
-        for( i = 0; i < 4; i++ )
+      // Find the closest corner in all other quadrangles
+      for( k = 0; k < quad_count; k++ )
+      {
+        if( k == idx )
+          continue;
+
+        for( j = 0; j < 4; j++ )
         {
-            CvPoint2D32f pt;
-            float min_dist = FLT_MAX;
-            int closest_corner_idx = -1;
-            CvCBQuad *closest_quad = 0;
-            CvCBCorner *closest_corner = 0;
+          // If it already has a neighbor
+          if( quads[k].neighbors[j] )
+            continue;
 
-            if( cur_quad->neighbors[i] )
-                continue;
-
-            pt = cur_quad->corners[i]->pt;
+          dx = pt.x - quads[k].corners[j]->pt.x;
+          dy = pt.y - quads[k].corners[j]->pt.y;
+          dist = dx * dx + dy * dy;
 
 
-            // Find the closest corner in all other quadrangles
-            for( k = 0; k < quad_count; k++ )
-            {
-                if( k == idx )
-                    continue;
+          // The following "if" checks, whether "dist" is the
+          // shortest so far and smaller than the smallest
+          // edge length of the current and target quads
+          if( dist < min_dist && 
+              dist <= (cur_quad->edge_len + thresh_dilation) &&
+              dist <= (quads[k].edge_len + thresh_dilation)    )
+          {
+            // First Check everything from the viewpoint of the current quad
+            // compute midpoints of "parallel" quad sides 1
+            float x1 = (cur_quad->corners[i]->pt.x + cur_quad->corners[(i+1)%4]->pt.x)/2;
+            float y1 = (cur_quad->corners[i]->pt.y + cur_quad->corners[(i+1)%4]->pt.y)/2;				
+            float x2 = (cur_quad->corners[(i+2)%4]->pt.x + cur_quad->corners[(i+3)%4]->pt.x)/2;
+            float y2 = (cur_quad->corners[(i+2)%4]->pt.y + cur_quad->corners[(i+3)%4]->pt.y)/2;	
+            // compute midpoints of "parallel" quad sides 2
+            float x3 = (cur_quad->corners[i]->pt.x + cur_quad->corners[(i+3)%4]->pt.x)/2;
+            float y3 = (cur_quad->corners[i]->pt.y + cur_quad->corners[(i+3)%4]->pt.y)/2;				
+            float x4 = (cur_quad->corners[(i+1)%4]->pt.x + cur_quad->corners[(i+2)%4]->pt.x)/2;
+            float y4 = (cur_quad->corners[(i+1)%4]->pt.y + cur_quad->corners[(i+2)%4]->pt.y)/2;	
 
-                for( j = 0; j < 4; j++ )
-                {
-					// If it already has a neighbor
-                    if( quads[k].neighbors[j] )
-                        continue;
+            // MARTIN: Heuristic
+            // For the corner "j" of quad "k" to be considered, 
+            // it needs to be on the same side of the two lines as 
+            // corner "i". This is given, if the cross product has 
+            // the same sign for both computations below:
+            float a1 = x1 - x2;
+            float b1 = y1 - y2;
+            // the current corner
+            float c11 = cur_quad->corners[i]->pt.x - x2;
+            float d11 = cur_quad->corners[i]->pt.y - y2;
+            // the candidate corner
+            float c12 = quads[k].corners[j]->pt.x - x2;
+            float d12 = quads[k].corners[j]->pt.y - y2;
+            float sign11 = a1*d11 - c11*b1;
+            float sign12 = a1*d12 - c12*b1;
 
-                    dx = pt.x - quads[k].corners[j]->pt.x;
-                    dy = pt.y - quads[k].corners[j]->pt.y;
-                    dist = dx * dx + dy * dy;
-
-
-					// The following "if" checks, whether "dist" is the
-					// shortest so far and smaller than the smallest
-					// edge length of the current and target quads
-                    if( dist < min_dist && 
-						dist <= (cur_quad->edge_len + thresh_dilation) &&
-                        dist <= (quads[k].edge_len + thresh_dilation)    )
-                    {
-						// First Check everything from the viewpoint of the current quad
-						// compute midpoints of "parallel" quad sides 1
-						float x1 = (cur_quad->corners[i]->pt.x + cur_quad->corners[(i+1)%4]->pt.x)/2;
-						float y1 = (cur_quad->corners[i]->pt.y + cur_quad->corners[(i+1)%4]->pt.y)/2;				
-						float x2 = (cur_quad->corners[(i+2)%4]->pt.x + cur_quad->corners[(i+3)%4]->pt.x)/2;
-						float y2 = (cur_quad->corners[(i+2)%4]->pt.y + cur_quad->corners[(i+3)%4]->pt.y)/2;	
-						// compute midpoints of "parallel" quad sides 2
-						float x3 = (cur_quad->corners[i]->pt.x + cur_quad->corners[(i+3)%4]->pt.x)/2;
-						float y3 = (cur_quad->corners[i]->pt.y + cur_quad->corners[(i+3)%4]->pt.y)/2;				
-						float x4 = (cur_quad->corners[(i+1)%4]->pt.x + cur_quad->corners[(i+2)%4]->pt.x)/2;
-						float y4 = (cur_quad->corners[(i+1)%4]->pt.y + cur_quad->corners[(i+2)%4]->pt.y)/2;	
-						
-						// MARTIN: Heuristic
-						// For the corner "j" of quad "k" to be considered, 
-						// it needs to be on the same side of the two lines as 
-						// corner "i". This is given, if the cross product has 
-						// the same sign for both computations below:
-						float a1 = x1 - x2;
-						float b1 = y1 - y2;
-						// the current corner
-						float c11 = cur_quad->corners[i]->pt.x - x2;
-						float d11 = cur_quad->corners[i]->pt.y - y2;
-						// the candidate corner
-						float c12 = quads[k].corners[j]->pt.x - x2;
-						float d12 = quads[k].corners[j]->pt.y - y2;
-						float sign11 = a1*d11 - c11*b1;
-						float sign12 = a1*d12 - c12*b1;
-
-						float a2 = x3 - x4;
-						float b2 = y3 - y4;
-						// the current corner
-						float c21 = cur_quad->corners[i]->pt.x - x4;
-						float d21 = cur_quad->corners[i]->pt.y - y4;
-						// the candidate corner
-						float c22 = quads[k].corners[j]->pt.x - x4;
-						float d22 = quads[k].corners[j]->pt.y - y4;
-						float sign21 = a2*d21 - c21*b2;
-						float sign22 = a2*d22 - c22*b2;
+            float a2 = x3 - x4;
+            float b2 = y3 - y4;
+            // the current corner
+            float c21 = cur_quad->corners[i]->pt.x - x4;
+            float d21 = cur_quad->corners[i]->pt.y - y4;
+            // the candidate corner
+            float c22 = quads[k].corners[j]->pt.x - x4;
+            float d22 = quads[k].corners[j]->pt.y - y4;
+            float sign21 = a2*d21 - c21*b2;
+            float sign22 = a2*d22 - c22*b2;
 
 
-						// Then make shure that two border quads of the same row or
-						// column don't link. Check from the current corner's view,
-						// whether the corner diagonal from the candidate corner
-						// is also on the same side of the two lines as the current
-						// corner and the candidate corner.
-						float c13 = quads[k].corners[(j+2)%4]->pt.x - x2;
-						float d13 = quads[k].corners[(j+2)%4]->pt.y - y2;
-						float c23 = quads[k].corners[(j+2)%4]->pt.x - x4;
-						float d23 = quads[k].corners[(j+2)%4]->pt.y - y4;
-						float sign13 = a1*d13 - c13*b1;
-						float sign23 = a2*d23 - c23*b2;
+            // Then make sure that two border quads of the same row or
+            // column don't link. Check from the current corner's view,
+            // whether the corner diagonal from the candidate corner
+            // is also on the same side of the two lines as the current
+            // corner and the candidate corner.
+            float c13 = quads[k].corners[(j+2)%4]->pt.x - x2;
+            float d13 = quads[k].corners[(j+2)%4]->pt.y - y2;
+            float c23 = quads[k].corners[(j+2)%4]->pt.x - x4;
+            float d23 = quads[k].corners[(j+2)%4]->pt.y - y4;
+            float sign13 = a1*d13 - c13*b1;
+            float sign23 = a2*d23 - c23*b2;
 
 
-						// Then check everything from the viewpoint of the candidate quad
-						// compute midpoints of "parallel" quad sides 1
-						float u1 = (quads[k].corners[j]->pt.x + quads[k].corners[(j+1)%4]->pt.x)/2;
-						float v1 = (quads[k].corners[j]->pt.y + quads[k].corners[(j+1)%4]->pt.y)/2;				
-						float u2 = (quads[k].corners[(j+2)%4]->pt.x + quads[k].corners[(j+3)%4]->pt.x)/2;
-						float v2 = (quads[k].corners[(j+2)%4]->pt.y + quads[k].corners[(j+3)%4]->pt.y)/2;	
-						// compute midpoints of "parallel" quad sides 2
-						float u3 = (quads[k].corners[j]->pt.x + quads[k].corners[(j+3)%4]->pt.x)/2;
-						float v3 = (quads[k].corners[j]->pt.y + quads[k].corners[(j+3)%4]->pt.y)/2;				
-						float u4 = (quads[k].corners[(j+1)%4]->pt.x + quads[k].corners[(j+2)%4]->pt.x)/2;
-						float v4 = (quads[k].corners[(j+1)%4]->pt.y + quads[k].corners[(j+2)%4]->pt.y)/2;	
-						
-						// MARTIN: Heuristic
-						// for the corner "j" of quad "k" to be considered, it 
-						// needs to be on the same side of the two lines as 
-						// corner "i". This is again given, if the cross
-						//product has the same sign for both computations below:
-						float a3 = u1 - u2;
-						float b3 = v1 - v2;
-						// the current corner
-						float c31 = cur_quad->corners[i]->pt.x - u2;
-						float d31 = cur_quad->corners[i]->pt.y - v2;
-						// the candidate corner
-						float c32 = quads[k].corners[j]->pt.x - u2;
-						float d32 = quads[k].corners[j]->pt.y - v2;
-						float sign31 = a3*d31-c31*b3;
-						float sign32 = a3*d32-c32*b3;
+            // Then check everything from the viewpoint of the candidate quad
+            // compute midpoints of "parallel" quad sides 1
+            float u1 = (quads[k].corners[j]->pt.x + quads[k].corners[(j+1)%4]->pt.x)/2;
+            float v1 = (quads[k].corners[j]->pt.y + quads[k].corners[(j+1)%4]->pt.y)/2;				
+            float u2 = (quads[k].corners[(j+2)%4]->pt.x + quads[k].corners[(j+3)%4]->pt.x)/2;
+            float v2 = (quads[k].corners[(j+2)%4]->pt.y + quads[k].corners[(j+3)%4]->pt.y)/2;	
+            // compute midpoints of "parallel" quad sides 2
+            float u3 = (quads[k].corners[j]->pt.x + quads[k].corners[(j+3)%4]->pt.x)/2;
+            float v3 = (quads[k].corners[j]->pt.y + quads[k].corners[(j+3)%4]->pt.y)/2;				
+            float u4 = (quads[k].corners[(j+1)%4]->pt.x + quads[k].corners[(j+2)%4]->pt.x)/2;
+            float v4 = (quads[k].corners[(j+1)%4]->pt.y + quads[k].corners[(j+2)%4]->pt.y)/2;	
 
-						float a4 = u3 - u4;
-						float b4 = v3 - v4;
-						// the current corner
-						float c41 = cur_quad->corners[i]->pt.x - u4;
-						float d41 = cur_quad->corners[i]->pt.y - v4;
-						// the candidate corner
-						float c42 = quads[k].corners[j]->pt.x - u4;
-						float d42 = quads[k].corners[j]->pt.y - v4;
-						float sign41 = a4*d41-c41*b4;
-						float sign42 = a4*d42-c42*b4;
+            // MARTIN: Heuristic
+            // for the corner "j" of quad "k" to be considered, it 
+            // needs to be on the same side of the two lines as 
+            // corner "i". This is again given, if the cross
+            //product has the same sign for both computations below:
+            float a3 = u1 - u2;
+            float b3 = v1 - v2;
+            // the current corner
+            float c31 = cur_quad->corners[i]->pt.x - u2;
+            float d31 = cur_quad->corners[i]->pt.y - v2;
+            // the candidate corner
+            float c32 = quads[k].corners[j]->pt.x - u2;
+            float d32 = quads[k].corners[j]->pt.y - v2;
+            float sign31 = a3*d31-c31*b3;
+            float sign32 = a3*d32-c32*b3;
 
-
-						// Then make shure that two border quads of the same row or
-						// column don't link. Check from the candidate corner's view,
-						// whether the corner diagonal from the current corner
-						// is also on the same side of the two lines as the current
-						// corner and the candidate corner.
-						float c33 = cur_quad->corners[(i+2)%4]->pt.x - u2;
-						float d33 = cur_quad->corners[(i+2)%4]->pt.y - v2;
-						float c43 = cur_quad->corners[(i+2)%4]->pt.x - u4;
-						float d43 = cur_quad->corners[(i+2)%4]->pt.y - v4;
-						float sign33 = a3*d33-c33*b3;
-						float sign43 = a4*d43-c43*b4;
+            float a4 = u3 - u4;
+            float b4 = v3 - v4;
+            // the current corner
+            float c41 = cur_quad->corners[i]->pt.x - u4;
+            float d41 = cur_quad->corners[i]->pt.y - v4;
+            // the candidate corner
+            float c42 = quads[k].corners[j]->pt.x - u4;
+            float d42 = quads[k].corners[j]->pt.y - v4;
+            float sign41 = a4*d41-c41*b4;
+            float sign42 = a4*d42-c42*b4;
 
 
-						// Check whether conditions are fulfilled
-						if ( ((sign11 < 0 && sign12 < 0) || (sign11 > 0 && sign12 > 0))  && 
+            // Then make sure that two border quads of the same row or
+            // column don't link. Check from the candidate corner's view,
+            // whether the corner diagonal from the current corner
+            // is also on the same side of the two lines as the current
+            // corner and the candidate corner.
+            float c33 = cur_quad->corners[(i+2)%4]->pt.x - u2;
+            float d33 = cur_quad->corners[(i+2)%4]->pt.y - v2;
+            float c43 = cur_quad->corners[(i+2)%4]->pt.x - u4;
+            float d43 = cur_quad->corners[(i+2)%4]->pt.y - v4;
+            float sign33 = a3*d33-c33*b3;
+            float sign43 = a4*d43-c43*b4;
+
+
+            // Check whether conditions are fulfilled
+            if ( ((sign11 < 0 && sign12 < 0) || (sign11 > 0 && sign12 > 0))  && 
 							 ((sign21 < 0 && sign22 < 0) || (sign21 > 0 && sign22 > 0))  &&
 							 ((sign31 < 0 && sign32 < 0) || (sign31 > 0 && sign32 > 0))  &&   
 							 ((sign41 < 0 && sign42 < 0) || (sign41 > 0 && sign42 > 0))  &&
@@ -1676,7 +1407,7 @@ static void mrFindQuadNeighbors2( CvCBQuad *quads, int quad_count, int dilation)
                 closest_corner = closest_quad->corners[closest_corner_idx];
 
 
-                // Make shure that the closest quad does not have the current
+                // Make sure that the closest quad does not have the current
 				// quad as neighbor already
                 for( j = 0; j < 4; j++ )
                 {
@@ -1822,7 +1553,7 @@ static int mrAugmentBestRun( CvCBQuad *new_quads, int new_quad_count, int new_di
 						float sign21 = a2*d21 - c21*b2;
 						float sign22 = a2*d22 - c22*b2;
 
-						// Also make shure that two border quads of the same row or
+						// Also make sure that two border quads of the same row or
 						// column don't link. Check from the current corner's view,
 						// whether the corner diagonal from the candidate corner
 						// is also on the same side of the two lines as the current
@@ -1875,7 +1606,7 @@ static int mrAugmentBestRun( CvCBQuad *new_quads, int new_quad_count, int new_di
 						float sign41 = a4*d41-c41*b4;
 						float sign42 = a4*d42-c42*b4;
 
-						// Also make shure that two border quads of the same row or
+						// Also make sure that two border quads of the same row or
 						// column don't link. Check from the candidate corner's view,
 						// whether the corner diagonal from the current corner
 						// is also on the same side of the two lines as the current
@@ -1888,7 +1619,7 @@ static int mrAugmentBestRun( CvCBQuad *new_quads, int new_quad_count, int new_di
 						float sign43 = a4*d43-c43*b4;
 
 						
-						// This time we also need to make shure, that no quad
+						// This time we also need to make sure, that no quad
 						// is linked to a quad of another dilation run which 
 						// may lie INSIDE it!!!
 						// Third: Therefore check everything from the viewpoint
@@ -2029,7 +1760,7 @@ static int mrAugmentBestRun( CvCBQuad *new_quads, int new_quad_count, int new_di
 				old_quads[old_quad_count]->labeled		= false;				//do it right afterwards
 				
 				
-				// We only know one neighbor for shure, initialize rest with 
+				// We only know one neighbor for sure, initialize rest with 
 				// the NULL pointer
 				old_quads[old_quad_count]->neighbors[closest_corner_idx]		= cur_quad;
 				old_quads[old_quad_count]->neighbors[(closest_corner_idx+1)%4]	= NULL;
@@ -2160,42 +1891,42 @@ icvGenerateQuads( CvCBQuad **out_quads, CvCBCorner **out_corners,
             // Reject non-quadrangles
             if(dst_contour->total == 4 && cvCheckContourConvexity(dst_contour) )
             {
-                CvPoint pt[4];
-                double d1, d2, p = cvContourPerimeter(dst_contour);
-                double area = fabs(cvContourArea(dst_contour, CV_WHOLE_SEQ));
-                double dx, dy;
+              CvPoint pt[4];
+              double d1, d2, p = cvContourPerimeter(dst_contour);
+              double area = fabs(cvContourArea(dst_contour, CV_WHOLE_SEQ));
+              double dx, dy;
 
-                for( i = 0; i < 4; i++ )
-                    pt[i] = *(CvPoint*)cvGetSeqElem(dst_contour, i);
+              for( i = 0; i < 4; i++ )
+                pt[i] = *(CvPoint*)cvGetSeqElem(dst_contour, i);
 
-                dx = pt[0].x - pt[2].x;
-                dy = pt[0].y - pt[2].y;
-                d1 = sqrt(dx*dx + dy*dy);
+              dx = pt[0].x - pt[2].x;
+              dy = pt[0].y - pt[2].y;
+              d1 = sqrt(dx*dx + dy*dy);
 
-                dx = pt[1].x - pt[3].x;
-                dy = pt[1].y - pt[3].y;
-                d2 = sqrt(dx*dx + dy*dy);
+              dx = pt[1].x - pt[3].x;
+              dy = pt[1].y - pt[3].y;
+              d2 = sqrt(dx*dx + dy*dy);
 
-                // PHILIPG: Only accept those quadrangles which are more
-				// square than rectangular and which are big enough
-                double d3, d4;
-                dx = pt[0].x - pt[1].x;
-                dy = pt[0].y - pt[1].y;
-                d3 = sqrt(dx*dx + dy*dy);
-                dx = pt[1].x - pt[2].x;
-                dy = pt[1].y - pt[2].y;
-                d4 = sqrt(dx*dx + dy*dy);
-                if(true)//!(flags & CV_CALIB_CB_FILTER_QUADS) ||
-                    //d3*4 > d4 && d4*4 > d3 && d3*d4 < area*1.5 && area > min_size &&
-                    //d1 >= 0.15 * p && d2 >= 0.15 * p )
-                {
-					CvContourEx* parent = (CvContourEx*)(src_contour->v_prev);
-					parent->counter++;
-					if( !board || board->counter < parent->counter )
-						board = parent;
-					dst_contour->v_prev = (CvSeq*)parent;
-					cvSeqPush( root, &dst_contour );
-                }
+              // PHILIPG: Only accept those quadrangles which are more
+              // square than rectangular and which are big enough
+              double d3, d4;
+              dx = pt[0].x - pt[1].x;
+              dy = pt[0].y - pt[1].y;
+              d3 = sqrt(dx*dx + dy*dy);
+              dx = pt[1].x - pt[2].x;
+              dy = pt[1].y - pt[2].y;
+              d4 = sqrt(dx*dx + dy*dy);
+              if(true)//!(flags & CV_CALIB_CB_FILTER_QUADS) ||
+                //d3*4 > d4 && d4*4 > d3 && d3*d4 < area*1.5 && area > min_size &&
+                //d1 >= 0.15 * p && d2 >= 0.15 * p )
+              {
+                CvContourEx* parent = (CvContourEx*)(src_contour->v_prev);
+                parent->counter++;
+                if( !board || board->counter < parent->counter )
+                  board = parent;
+                dst_contour->v_prev = (CvSeq*)parent;
+                cvSeqPush( root, &dst_contour );
+              }
             }
         }
     }
@@ -2458,6 +2189,159 @@ static int mrWriteCorners( CvCBQuad **output_quads, int count, CvSize pattern_si
 
 	// pattern found, or not found?
 	return internal_found;
+}
+
+
+
+//===========================================================================
+// getUVPoints
+//===========================================================================
+static void getUVPoints(const CvMat *i_imCurr, std::vector<cv::Point2i> &outvec, int threshVal) {
+  cv::Mat *m_imCurr = new cv::Mat(cv::Size(i_imCurr->cols, i_imCurr->rows), i_imCurr->type, i_imCurr->data.ptr);
+  bool DEBUG = false;
+
+  std::vector< cv::Point > fastPoints;
+  std::vector< cv::Point > fastInterior;
+  initFAST(fastPoints, fastInterior);
+
+  if (DEBUG)
+    std::cout << "Thresh: " << threshVal << std::endl;
+  cv::Rect m_roi     = cv::Rect(cv::Point(0, 0), m_imCurr->size());
+  cv::Mat m_imCheck = cv::Mat(m_imCurr->size(), CV_8UC1);
+  m_imCheck = cv::Scalar(0);
+  cv::Point peakPoint;
+  int x,y;
+
+  bool          test;
+  unsigned char maximumVal = 0;
+  for (int j = 0; j < m_imCurr->rows; j++) {
+    for (int i = 0; i < m_imCurr->cols; i++) {
+          continue;
+      if (m_imCheck.data[index2d(i, j)] == 0) {
+        if (m_imCurr->data[index2d(i, j)] > threshVal) {
+          test   = true;
+          for (int m = 0; m < (int)(fastPoints.size()); m++) {
+            x = i + fastPoints[m].x;
+            if (x < 0) {
+              test = false;
+              break;
+            }
+            if (x >= m_roi.width) {
+              test = false;
+              break;
+            }
+
+            y = j + fastPoints[m].y;
+            if (y < 0) {
+              test = false;
+              break;
+            }
+            if (y >= m_roi.height) {
+              test = false;
+              break;
+            }
+
+            if (m_imCheck.data[index2d(x,y)] == 255){
+              test =false;
+              break;
+            }
+
+
+            if ((m_imCurr->data[index2d(i, j)] - m_imCurr->data[index2d(x, y)]) < (threshVal/2)) {
+
+              test = false;
+              break;
+            }
+          }
+          if (test) {
+            maximumVal = 0;
+            for (int m = 0; m < (int)(fastInterior.size()); m++) {
+            /* for (int m = 0; m < 1; m++) { */
+              x = i + fastInterior[m].x;
+              if (x < 0) {
+                continue;
+              }
+              if (x >= m_roi.width) {
+                continue;
+              }
+
+              y = j + fastInterior[m].y;
+              if (y < 0) {
+                continue;
+              }
+              if (y >= m_roi.height) {
+                continue;
+              }
+              /* std::cout << "here: " << x << ":" << y << std::endl; */
+
+              if (m_imCheck.data[index2d(x, y)] == 0) {
+                if (m_imCurr->data[index2d(x, y)] > maximumVal) {
+                  maximumVal  = m_imCurr->data[index2d(x, y)];
+                  peakPoint.x = x;
+                  peakPoint.y = y;
+                }
+                m_imCheck.data[index2d(x, y)] = 255;
+              }
+            }
+            outvec.push_back(peakPoint);
+          }
+        }
+      }
+    }
+  }
+  return;
+}
+
+static void initFAST(std::vector<cv::Point> &fastPoints, std::vector<cv::Point> &fastInterior) {
+  fastPoints.clear();
+
+  fastPoints.push_back(cv::Point(0, -3));
+  fastPoints.push_back(cv::Point(0, 3));
+  fastPoints.push_back(cv::Point(3, 0));
+  fastPoints.push_back(cv::Point(-3, 0));
+
+  fastPoints.push_back(cv::Point(2, -2));
+  fastPoints.push_back(cv::Point(-2, 2));
+  fastPoints.push_back(cv::Point(-2, -2));
+  fastPoints.push_back(cv::Point(2, 2));
+
+  fastPoints.push_back(cv::Point(-1, -3));
+  fastPoints.push_back(cv::Point(1, 3));
+  fastPoints.push_back(cv::Point(3, -1));
+  fastPoints.push_back(cv::Point(-3, 1));
+
+  fastPoints.push_back(cv::Point(1, -3));
+  fastPoints.push_back(cv::Point(-1, 3));
+  fastPoints.push_back(cv::Point(3, 1));
+  fastPoints.push_back(cv::Point(-3, -1));
+
+  fastInterior.clear();
+
+  /* fastInterior.push_back(cv::Point(-1, -2)); */
+  /* fastInterior.push_back(cv::Point(0, -2)); */
+  /* fastInterior.push_back(cv::Point(1, -2)); */
+
+  /* fastInterior.push_back(cv::Point(-2, -1)); */
+  /* fastInterior.push_back(cv::Point(-1, -1)); */
+  /* fastInterior.push_back(cv::Point(0, -1)); */
+  /* fastInterior.push_back(cv::Point(1, -1)); */
+  /* fastInterior.push_back(cv::Point(2, -1)); */
+
+  /* fastInterior.push_back(cv::Point(-2, 0)); */
+  /* fastInterior.push_back(cv::Point(-1, 0)); */
+  fastInterior.push_back(cv::Point(0, 0));
+  fastInterior.push_back(cv::Point(1, 0));
+  fastInterior.push_back(cv::Point(2, 0));
+
+  /* fastInterior.push_back(cv::Point(-2, 1)); */
+  /* fastInterior.push_back(cv::Point(-1, 1)); */
+  fastInterior.push_back(cv::Point(0, 1));
+  fastInterior.push_back(cv::Point(1, 1));
+  fastInterior.push_back(cv::Point(2, 1));
+
+  /* fastInterior.push_back(cv::Point(-1, 2)); */
+  fastInterior.push_back(cv::Point(0, 2));
+  fastInterior.push_back(cv::Point(1, 2));
 }
 
 //===========================================================================
