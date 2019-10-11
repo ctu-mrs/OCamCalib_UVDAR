@@ -92,6 +92,31 @@ CvCBQuad;
 
 
 
+typedef struct gridPoint{
+  cv::Point* point;
+  gridPoint* left;
+  gridPoint* right;
+  gridPoint* above;
+  gridPoint* below;;
+  gridPoint(cv::Point* i_point){
+    point = i_point;
+    left = right = above = below = 0;
+  };
+}
+gridPoint;
+
+typedef struct hullPoint{
+  cv::Point* point;
+  hullPoint* left;
+  hullPoint* right;
+  double angle = -1;
+  hullPoint(cv::Point* i_point){
+    point = i_point;
+    left = right = 0;
+  };
+}
+hullPoint;
+
 //===========================================================================
 // FUNCTION PROTOTYPES
 //===========================================================================
@@ -124,6 +149,9 @@ static void initFAST(std::vector<cv::Point> &fastPoints, std::vector<cv::Point> 
 
 static void getUVPoints(const CvMat *i_imCurr, std::vector<cv::Point2i> &outvec, int threshVal);
 
+static void getHullPoints(std::vector<cv::Point2i> &uv_points, std::vector<bool> &marked_points, hullPoint*& start, double maxConcaveAngle, CvMat* vis_img);
+
+static hullPoint* getSharpestHullPoint(hullPoint* start);
 
 //===========================================================================
 // MAIN FUNCTION
@@ -151,6 +179,9 @@ int cvFindUVMarkers( const void* arr, CvSize pattern_size,
     CvMat* thresh_img			=  0;
 	CvMat* thresh_img_save		=  0;
     CvMemStorage* storage		=  0;
+#if VIS
+    CvMat* vis_img			=  0;
+#endif
 	
 	CvCBQuad *quads				=  0;
 	CvCBQuad **quad_group		=  0;
@@ -158,6 +189,10 @@ int cvFindUVMarkers( const void* arr, CvSize pattern_size,
 	CvCBCorner **corner_group	=  0;
 	CvCBQuad **output_quad_group = 0;
   std::vector<cv::Point2i> uv_points = std::vector<cv::Point2i>();
+  std::vector<bool> marked_points = std::vector<bool>();
+  hullPoint* hull_points;
+  hullPoint* corner_hull_point;
+  hullPoint * currHullPoint = hull_points;
 	
     // debug trial. Martin Rufli, 28. Ocober, 2008
 	int block_size = 0;
@@ -254,16 +289,35 @@ int cvFindUVMarkers( const void* arr, CvSize pattern_size,
 
 
   CV_CALL( getUVPoints(img, uv_points, 150) );
-
+  for (auto &uvpt : uv_points)
+    marked_points.push_back(false);
 //VISUALIZATION--------------------------------------------------------------
 #if VIS
- 		cvNamedWindow( "Original Image", 1 );
-		cvShowImage( "Original Image", img);
+    CV_CALL( vis_img = cvCreateMat( img->rows, img->cols, CV_8UC1 ));
+    cvCopy( img, vis_img);
+    for (auto &pt : uv_points){
+      /* std::cout << pt << std::endl; */
+      cvCircle(vis_img, pt, 5, cv::Scalar(255));
+    }
+ 		cvNamedWindow( "ocv_Markers", 1 );
+		cvShowImage( "ocv_Markers", vis_img);
 		//cvSaveImage("pictureVis/OrigImg.png", img);
 		cvWaitKey(0);
 #endif
 //END------------------------------------------------------------------------
 //
+  CV_CALL( getHullPoints(uv_points, marked_points, hull_points, 0.1745, vis_img) );
+
+  CV_CALL( corner_hull_point = getSharpestHullPoint(hull_points));
+//
+//VISUALIZATION--------------------------------------------------------------
+#if VIS
+  cvCircle(vis_img, *(corner_hull_point->point), 15, cv::Scalar(150));
+  cvShowImage( "ocv_Markers", vis_img);
+  //cvSaveImage("pictureVis/OrigImg.png", img);
+		cvWaitKey(0);
+#endif
+//END------------------------------------------------------------------------
 	// For image binarization (thresholding)
     // we use an adaptive threshold with a gaussian mask
 	// ATTENTION: Gaussian thresholding takes MUCH more time than Mean thresholding!
@@ -2198,7 +2252,7 @@ static int mrWriteCorners( CvCBQuad **output_quads, int count, CvSize pattern_si
 //===========================================================================
 static void getUVPoints(const CvMat *i_imCurr, std::vector<cv::Point2i> &outvec, int threshVal) {
   cv::Mat *m_imCurr = new cv::Mat(cv::Size(i_imCurr->cols, i_imCurr->rows), i_imCurr->type, i_imCurr->data.ptr);
-  bool DEBUG = false;
+  bool DEBUG = true;
 
   std::vector< cv::Point > fastPoints;
   std::vector< cv::Point > fastInterior;
@@ -2216,10 +2270,12 @@ static void getUVPoints(const CvMat *i_imCurr, std::vector<cv::Point2i> &outvec,
   unsigned char maximumVal = 0;
   for (int j = 0; j < m_imCurr->rows; j++) {
     for (int i = 0; i < m_imCurr->cols; i++) {
-          continue;
+          /* std::cout << "imCheck at [" << i << ":" << j << "]: " << m_imCheck.data[index2d(i, j)] << std::endl; */
       if (m_imCheck.data[index2d(i, j)] == 0) {
-        if (m_imCurr->data[index2d(i, j)] > threshVal) {
+        /* if (m_imCurr->data[index2d(i, j)] > threshVal) { */
+        if (true) {
           test   = true;
+          /* std::cout << "Fast points size:" << fastPoints.size() << std::endl; */
           for (int m = 0; m < (int)(fastPoints.size()); m++) {
             x = i + fastPoints[m].x;
             if (x < 0) {
@@ -2249,10 +2305,15 @@ static void getUVPoints(const CvMat *i_imCurr, std::vector<cv::Point2i> &outvec,
 
             if ((m_imCurr->data[index2d(i, j)] - m_imCurr->data[index2d(x, y)]) < (threshVal/2)) {
 
+              /* if (DEBUG) */
+              /*   std::cout << "Fast test failed for: [" << x << ":" << y << "] with diff. of" << (m_imCurr->data[index2d(i, j)] - m_imCurr->data[index2d(x, y)])<< std::endl; */
               test = false;
               break;
             }
           }
+          /* if (DEBUG) */
+          /*   std::cout << "Fast test passed for: [" << x << ":" << y << "]" << std::endl; */
+
           if (test) {
             maximumVal = 0;
             for (int m = 0; m < (int)(fastInterior.size()); m++) {
@@ -2283,6 +2344,7 @@ static void getUVPoints(const CvMat *i_imCurr, std::vector<cv::Point2i> &outvec,
                 m_imCheck.data[index2d(x, y)] = 255;
               }
             }
+            /* std::cout << "peakPoint: "<< peakPoint << std::endl; */
             outvec.push_back(peakPoint);
           }
         }
@@ -2343,6 +2405,177 @@ static void initFAST(std::vector<cv::Point> &fastPoints, std::vector<cv::Point> 
   fastInterior.push_back(cv::Point(0, 2));
   fastInterior.push_back(cv::Point(1, 2));
 }
+
+
+double distance(cv::Point a, cv::Point b){
+return cv::norm(a-b);
+}
+double distance(cv::Point* a, cv::Point* b){
+return distance(*a,*b);
+}
+double distance(cv::Point a, cv::Point* b){
+return distance(a,*b);
+}
+
+double cosAngle(cv::Point *a,cv::Point *b,cv::Point *c){
+  cv::Point da = (*b)-(*a);
+  cv::Point db = (*c)-(*b);
+  /* std::cout << "da: " << da << std::endl; */
+  /* std::cout << "db: " << db << std::endl; */
+  double output = (da.dot(db))/(cv::norm(da)*cv::norm(db));
+  /* std::cout << "cosAngle: " << output << std::endl; */
+  return output;
+}
+double angle3p(cv::Point *a,cv::Point *b,cv::Point *c){
+  cv::Point da = -(*b)+(*a);
+  cv::Point db = (*c)-(*b);
+    const double sin_ab = da.cross(db);
+    const double cos_ab = da.dot(db);
+    double angle = -std::atan2(sin_ab, cos_ab);
+  std::cout << "da: " << da << std::endl;
+  std::cout << "db: " << db << std::endl;
+  if (angle<0)
+    angle+=2*M_PI;
+  /* double output = (da.dot(db))/(cv::norm(da)*cv::norm(db)); */
+  std::cout << "angle: " << angle << std::endl;
+  return angle;
+}
+
+#define maxDistSample 6.0
+double getMaxDistance(cv::Point* currPoint, std::vector<cv::Point> & uv_points){
+  std::vector<int> ordered;
+  for (int i=0;i<(int)(uv_points.size());i++){
+    ordered.push_back(i);
+  }
+
+  for (size_t i=0; i< uv_points.size(); i++){
+    for (size_t j=0; j< uv_points.size()-1; j++){
+      if (distance(uv_points[ordered[j]], currPoint)>distance(uv_points[ordered[j+1]], currPoint)){
+        std::swap(ordered[j],ordered[j+1]);
+      }
+    }
+  }
+  std::cout << "Order of closest to " << *currPoint << ": " << std::endl;
+  for (int &i : ordered){
+    std::cout << uv_points[i] << std::endl;
+  }
+
+  double sumDist = 0;
+  for (int i=1; i<maxDistSample+1; i++){
+    sumDist += distance(uv_points[ordered[i]], currPoint);
+  }
+  double distAvg = sumDist/maxDistSample;
+
+  /* double bestDist = distance(uv_points[ordered[maxDistSample]], currPoint); */
+  /* std::cout << "Best distance is " << bestDist << ": " << uv_points[ordered[3]] << std::endl; */
+  std::cout << "Average distance is " << distAvg << std::endl;
+
+  return distAvg;
+}
+
+int findLeftmostCorner(std::vector<cv::Point2i> &uv_points){
+  int leftMost = 0;
+  for (int i=0; i< (int)(uv_points.size()); i++){
+    if (uv_points[i].x < uv_points[leftMost].x)
+      leftMost = i;
+  }
+  return leftMost;
+}
+
+
+static void getHullPoints(std::vector<cv::Point2i> &uv_points, std::vector<bool> &marked_points, hullPoint*& start, double maxConcaveAngle, CvMat* vis_img){
+  int leftMostCornerIndex = findLeftmostCorner(uv_points);
+  start = new hullPoint(&(uv_points[leftMostCornerIndex]));
+  hullPoint* currHullPoint = start;
+  marked_points[leftMostCornerIndex] = true;
+  //VISUALIZATION--------------------------------------------------------------
+#if VIS
+  cvCircle(vis_img, uv_points[leftMostCornerIndex], 7, cv::Scalar(255));
+  cvCircle(vis_img, uv_points[leftMostCornerIndex], 3, cv::Scalar(255));
+  cvNamedWindow( "ocv_Markers", 1 );
+  cvShowImage( "ocv_Markers", vis_img);
+  cvWaitKey(30);
+#endif
+//END------------------------------------------------------------------------
+  cv::Point initPoint = uv_points[leftMostCornerIndex];
+  initPoint.y = initPoint.y+10;
+  cv::Point* prevPoint = &(initPoint);
+  cv::Point* tentPoint;
+  cv::Point* currPoint = currHullPoint->point;
+  bool done =false;
+  do {
+    std::cout << "Addresses: " << currHullPoint->point << " : " << start->point << std::endl;
+    double maxDistance = getMaxDistance(currPoint, uv_points);
+    double bestAngle = 0;
+    double currAngle;
+    int bestIndex = -1;
+    for (int i=0; i<(int)(marked_points.size()); i++){
+      if (&(uv_points[i]) == currPoint)
+        continue;
+
+      if ((marked_points[i] == true) && (&(uv_points[i]) != start->point))
+        continue;
+
+      tentPoint = &(uv_points[i]);
+      if (distance(currPoint,tentPoint) > maxDistance){
+        /* std::cout << "Distance check failed with dist. of " << distance(currPoint,tentPoint) << " vs " << maxDistance << std::endl; */
+        continue;
+      }
+        std::cout << "Distance check passed with dist. of " << distance(currPoint,tentPoint) << " vs " << maxDistance << std::endl;
+
+      currAngle = angle3p(prevPoint, currPoint, tentPoint );
+      if (currAngle> bestAngle){
+        bestAngle = currAngle;
+        bestIndex = i;
+      }
+    }
+    //VISUALIZATION--------------------------------------------------------------
+#if VIS
+    cvCircle(vis_img, uv_points[bestIndex], 7, cv::Scalar(255));
+    cvNamedWindow( "ocv_Markers", 1 );
+    cvShowImage( "ocv_Markers", vis_img);
+		cvWaitKey(10);
+#endif
+//END------------------------------------------------------------------------
+//
+
+    if (&(uv_points[bestIndex]) == start->point)
+      done = true;
+
+    if (!done)
+      currHullPoint->right = new hullPoint(&(uv_points[bestIndex]));
+    else 
+      currHullPoint->right = start;
+
+    currHullPoint->right->left = currHullPoint;
+    currHullPoint->angle = bestAngle;
+    marked_points.at(bestIndex) = true;
+    if (done)
+      break;
+    prevPoint = currHullPoint->point;
+    currHullPoint = currHullPoint->right;
+    currPoint = currHullPoint->point;
+  }while (true);
+  /* }while (currHullPoint->point != start->point); */
+  return;
+
+}
+
+static hullPoint* getSharpestHullPoint(hullPoint* start){
+  double angle = 0;
+  hullPoint *currPoint = start;
+  hullPoint *sharpestPoint = 0;
+  do {
+    if (currPoint->angle > angle){
+      angle = currPoint->angle;
+      sharpestPoint = currPoint;
+    }
+    currPoint = currPoint->right;
+  } while (currPoint != start);
+  return sharpestPoint;
+}
+
+
 
 //===========================================================================
 // END OF FILE
