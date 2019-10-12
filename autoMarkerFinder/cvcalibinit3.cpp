@@ -92,30 +92,30 @@ CvCBQuad;
 
 
 
-typedef struct gridPoint{
+typedef struct GridPoint{
   cv::Point* point;
-  gridPoint* left;
-  gridPoint* right;
-  gridPoint* above;
-  gridPoint* below;;
-  gridPoint(cv::Point* i_point){
+  GridPoint* left;
+  GridPoint* right;
+  GridPoint* above;
+  GridPoint* below;;
+  GridPoint(cv::Point* i_point){
     point = i_point;
-    left = right = above = below = 0;
+    left = right = above = below = nullptr;
   };
 }
-gridPoint;
+GridPoint;
 
-typedef struct hullPoint{
+typedef struct HullPoint{
   cv::Point* point;
-  hullPoint* left;
-  hullPoint* right;
+  HullPoint* left;
+  HullPoint* right;
   double angle = -1;
-  hullPoint(cv::Point* i_point){
+  HullPoint(cv::Point* i_point){
     point = i_point;
-    left = right = 0;
+    left = right = nullptr;
   };
 }
-hullPoint;
+HullPoint;
 
 //===========================================================================
 // FUNCTION PROTOTYPES
@@ -149,9 +149,11 @@ static void initFAST(std::vector<cv::Point> &fastPoints, std::vector<cv::Point> 
 
 static void getUVPoints(const CvMat *i_imCurr, std::vector<cv::Point2i> &outvec, int threshVal);
 
-static void getHullPoints(std::vector<cv::Point2i> &uv_points, std::vector<bool> &marked_points, hullPoint*& start, double maxConcaveAngle, CvMat* vis_img);
+static void getHullPoints(std::vector<cv::Point2i> &uv_points, std::vector<bool> &marked_points, HullPoint*& start, double maxConcaveAngle, CvMat* vis_img);
 
-static hullPoint* getSharpestHullPoint(hullPoint* start);
+static HullPoint* getSharpestHullPoint(HullPoint* start);
+
+static void getGrid(HullPoint* corner_hull_point, GridPoint*& grid_points, std::vector<cv::Point2i> &uv_points, std::vector<bool>& marked_points, int W, int H, CvMat *vis_img);
 
 //===========================================================================
 // MAIN FUNCTION
@@ -190,9 +192,10 @@ int cvFindUVMarkers( const void* arr, CvSize pattern_size,
 	CvCBQuad **output_quad_group = 0;
   std::vector<cv::Point2i> uv_points = std::vector<cv::Point2i>();
   std::vector<bool> marked_points = std::vector<bool>();
-  hullPoint* hull_points;
-  hullPoint* corner_hull_point;
-  hullPoint * currHullPoint = hull_points;
+  HullPoint* hull_points;
+  HullPoint* corner_hull_point;
+  HullPoint * currHullPoint = hull_points;
+  GridPoint* grid_points;
 	
     // debug trial. Martin Rufli, 28. Ocober, 2008
 	int block_size = 0;
@@ -309,7 +312,7 @@ int cvFindUVMarkers( const void* arr, CvSize pattern_size,
   CV_CALL( getHullPoints(uv_points, marked_points, hull_points, 0.1745, vis_img) );
 
   CV_CALL( corner_hull_point = getSharpestHullPoint(hull_points));
-//
+
 //VISUALIZATION--------------------------------------------------------------
 #if VIS
   cvCircle(vis_img, *(corner_hull_point->point), 15, cv::Scalar(150));
@@ -318,6 +321,9 @@ int cvFindUVMarkers( const void* arr, CvSize pattern_size,
 		cvWaitKey(0);
 #endif
 //END------------------------------------------------------------------------
+//
+  CV_CALL( getGrid(corner_hull_point, grid_points, uv_points, marked_points, pattern_size.width, pattern_size.height, vis_img));
+
 	// For image binarization (thresholding)
     // we use an adaptive threshold with a gaussian mask
 	// ATTENTION: Gaussian thresholding takes MUCH more time than Mean thresholding!
@@ -2432,12 +2438,12 @@ double angle3p(cv::Point *a,cv::Point *b,cv::Point *c){
     const double sin_ab = da.cross(db);
     const double cos_ab = da.dot(db);
     double angle = -std::atan2(sin_ab, cos_ab);
-  std::cout << "da: " << da << std::endl;
-  std::cout << "db: " << db << std::endl;
+  /* std::cout << "da: " << da << std::endl; */
+  /* std::cout << "db: " << db << std::endl; */
   if (angle<0)
     angle+=2*M_PI;
   /* double output = (da.dot(db))/(cv::norm(da)*cv::norm(db)); */
-  std::cout << "angle: " << angle << std::endl;
+  /* std::cout << "angle: " << angle << std::endl; */
   return angle;
 }
 
@@ -2455,9 +2461,9 @@ double getMaxDistance(cv::Point* currPoint, std::vector<cv::Point> & uv_points){
       }
     }
   }
-  std::cout << "Order of closest to " << *currPoint << ": " << std::endl;
+  /* std::cout << "Order of closest to " << *currPoint << ": " << std::endl; */
   for (int &i : ordered){
-    std::cout << uv_points[i] << std::endl;
+    /* std::cout << uv_points[i] << std::endl; */
   }
 
   double sumDist = 0;
@@ -2468,7 +2474,7 @@ double getMaxDistance(cv::Point* currPoint, std::vector<cv::Point> & uv_points){
 
   /* double bestDist = distance(uv_points[ordered[maxDistSample]], currPoint); */
   /* std::cout << "Best distance is " << bestDist << ": " << uv_points[ordered[3]] << std::endl; */
-  std::cout << "Average distance is " << distAvg << std::endl;
+  /* std::cout << "Average distance is " << distAvg << std::endl; */
 
   return distAvg;
 }
@@ -2483,10 +2489,10 @@ int findLeftmostCorner(std::vector<cv::Point2i> &uv_points){
 }
 
 
-static void getHullPoints(std::vector<cv::Point2i> &uv_points, std::vector<bool> &marked_points, hullPoint*& start, double maxConcaveAngle, CvMat* vis_img){
+static void getHullPoints(std::vector<cv::Point2i> &uv_points, std::vector<bool> &marked_points, HullPoint*& start, double maxConcaveAngle, CvMat* vis_img){
   int leftMostCornerIndex = findLeftmostCorner(uv_points);
-  start = new hullPoint(&(uv_points[leftMostCornerIndex]));
-  hullPoint* currHullPoint = start;
+  start = new HullPoint(&(uv_points[leftMostCornerIndex]));
+  HullPoint* currHullPoint = start;
   marked_points[leftMostCornerIndex] = true;
   //VISUALIZATION--------------------------------------------------------------
 #if VIS
@@ -2504,7 +2510,7 @@ static void getHullPoints(std::vector<cv::Point2i> &uv_points, std::vector<bool>
   cv::Point* currPoint = currHullPoint->point;
   bool done =false;
   do {
-    std::cout << "Addresses: " << currHullPoint->point << " : " << start->point << std::endl;
+    /* std::cout << "Addresses: " << currHullPoint->point << " : " << start->point << std::endl; */
     double maxDistance = getMaxDistance(currPoint, uv_points);
     double bestAngle = 0;
     double currAngle;
@@ -2521,7 +2527,7 @@ static void getHullPoints(std::vector<cv::Point2i> &uv_points, std::vector<bool>
         /* std::cout << "Distance check failed with dist. of " << distance(currPoint,tentPoint) << " vs " << maxDistance << std::endl; */
         continue;
       }
-        std::cout << "Distance check passed with dist. of " << distance(currPoint,tentPoint) << " vs " << maxDistance << std::endl;
+        /* std::cout << "Distance check passed with dist. of " << distance(currPoint,tentPoint) << " vs " << maxDistance << std::endl; */
 
       currAngle = angle3p(prevPoint, currPoint, tentPoint );
       if (currAngle> bestAngle){
@@ -2543,7 +2549,7 @@ static void getHullPoints(std::vector<cv::Point2i> &uv_points, std::vector<bool>
       done = true;
 
     if (!done)
-      currHullPoint->right = new hullPoint(&(uv_points[bestIndex]));
+      currHullPoint->right = new HullPoint(&(uv_points[bestIndex]));
     else 
       currHullPoint->right = start;
 
@@ -2561,12 +2567,12 @@ static void getHullPoints(std::vector<cv::Point2i> &uv_points, std::vector<bool>
 
 }
 
-static hullPoint* getSharpestHullPoint(hullPoint* start){
-  double angle = 0;
-  hullPoint *currPoint = start;
-  hullPoint *sharpestPoint = 0;
+static HullPoint* getSharpestHullPoint(HullPoint* start){
+  double angle = 2*M_PI;
+  HullPoint *currPoint = start;
+  HullPoint *sharpestPoint = 0;
   do {
-    if (currPoint->angle > angle){
+    if (currPoint->angle < angle){
       angle = currPoint->angle;
       sharpestPoint = currPoint;
     }
@@ -2575,7 +2581,117 @@ static hullPoint* getSharpestHullPoint(hullPoint* start){
   return sharpestPoint;
 }
 
+cv::Point2d multiply(cv::Mat M, cv::Point2i p){
+  cv::Point2d output;
+  output.x = M.at<float>(cv::Point(0,0))*p.x + M.at<float>(cv::Point(1,0))*p.y;
+  output.y = M.at<float>(cv::Point(0,1))*p.x + M.at<float>(cv::Point(1,1))*p.y;
+  return output;
+}
 
+static void getGrid(HullPoint* corner_hull_point, GridPoint*& grid_points, std::vector<cv::Point2i> &uv_points, std::vector<bool>& marked_points, int W, int H, CvMat *vis_img){
+  std::cout << "corner point is :" << *(corner_hull_point->point) << std::endl;
+  HullPoint* hull_point_current = corner_hull_point;
+  grid_points = new GridPoint(hull_point_current->point);
+  GridPoint* grid_point_current = grid_points;
+  GridPoint* grid_point_first_in_axis = grid_points;
+  HullPoint* hull_point_first_in_axis = corner_hull_point;
+  std::cout << "current grid point " << *(grid_point_current->point) << std::endl;
+  grid_point_current->right = new GridPoint(hull_point_current->right->point);
+  grid_point_current->below = new GridPoint(hull_point_current->left->point);
+  grid_point_current->right->left = grid_point_current;
+  grid_point_current->below->above = grid_point_current;
+
+  bool x_axis_first;
+  HullPoint* hull_point_potential_end_a = hull_point_current;
+  HullPoint* hull_point_potential_end_b = hull_point_current;
+  HullPoint* hull_point_last = hull_point_current;
+  for (int i=0; i<W; i++){
+    hull_point_potential_end_a = hull_point_potential_end_a->right;
+  }
+  for (int i=0; i<H; i++){
+    hull_point_potential_end_b = hull_point_potential_end_b->right;
+  }
+  for (int i=0; i<(H+W-2); i++){
+    hull_point_last = hull_point_last->right;
+  }
+
+  cv::Mat transformer(cv::Size(2,2), CV_32F);
+  do {
+    do {
+    auto xvec = *(grid_point_current->right->point) - *(grid_point_current->point);
+    auto yvec = *(grid_point_current->below->point) - *(grid_point_current->point);
+    transformer.at<float>(cv::Point(0,0)) = xvec.x;
+    transformer.at<float>(cv::Point(1,0)) = yvec.x;
+    transformer.at<float>(cv::Point(0,1)) = xvec.y;
+    transformer.at<float>(cv::Point(1,1)) = yvec.y;
+    std::cout << "inverted transformer" << std::endl << transformer <<std::endl;
+    transformer = transformer.inv();
+    std::cout << "using transformer" << std::endl << transformer <<std::endl;
+    cv::Point2d transPoint;
+    for (int i=0; i<(int)(uv_points.size()); i++){
+      if ((marked_points[i]))
+        if ((&(uv_points[i])!=hull_point_potential_end_a->point) && (&(uv_points[i])!=hull_point_potential_end_b->point)){
+        std::cout << "uv_point " << uv_points[i] << " is marked and not at the end, skipping it." << std::endl;
+        continue;
+      }
+      transPoint = multiply(transformer,(uv_points[i]-*(grid_point_current->point)));
+      std::cout << "uv_point " << uv_points[i] << " shifted to " << (uv_points[i]-*(grid_point_current->point)) << " transformed to "<< transPoint << std::endl;
+      if ((transPoint.x > 0.5) && (transPoint.x < 1.5))
+        if ((transPoint.y > 0.5) && (transPoint.y < 1.5)){
+          std::cout << "Found new grid point at:" << uv_points[i] << std::endl;
+          //VISUALIZATION--------------------------------------------------------------
+#if VIS
+          cvCircle(vis_img, uv_points[i], 12, cv::Scalar(255));
+          cvNamedWindow( "ocv_Markers", 1 );
+          cvShowImage( "ocv_Markers", vis_img);
+          cvWaitKey(10);
+#endif
+          //END------------------------------------------------------------------------
+          grid_point_current->right->below = new GridPoint(&(uv_points[i]));
+          grid_point_current->below->right = grid_point_current->right->below;
+          grid_point_current->right->below->above = grid_point_current->right;
+          grid_point_current->right->below->left = grid_point_current->below;
+          marked_points[i] = true;
+        }
+    }
+      hull_point_current = hull_point_current->right;
+      grid_point_current = grid_point_current->right;
+      grid_point_current->right = new GridPoint(hull_point_current->right->point);
+      grid_point_current->right->left = grid_point_current;
+
+      if (hull_point_current == hull_point_potential_end_a){
+        x_axis_first = true;
+        hull_point_potential_end_a = hull_point_potential_end_a->right;
+        break;
+      }
+      if (hull_point_current == hull_point_potential_end_b){
+        x_axis_first = false;
+        hull_point_potential_end_b = hull_point_potential_end_b->right;
+        break;
+      }
+
+
+    
+  } while (true);
+    if (hull_point_current == hull_point_last){
+      break;
+    }
+
+    std::cout << "Next line" <<std::endl;
+
+    hull_point_current = hull_point_first_in_axis->left;
+    grid_point_current = grid_point_first_in_axis->below;
+    /* grid_point_current->right = new GridPoint(grid_point_first_in_axis->right->below->point); */
+    grid_point_current->below = new GridPoint(hull_point_current->left->point);
+    /* grid_point_current->right->left = grid_point_current; */
+    hull_point_first_in_axis = hull_point_current;
+    grid_point_first_in_axis = grid_point_current;
+
+
+} while (true);
+
+  cvWaitKey(0);
+}
 
 //===========================================================================
 // END OF FILE
