@@ -41,6 +41,7 @@ extern "C" {
 
 #include <time.h>
 #include <fstream>
+#include <csignal>
 using namespace std;
 using std::ifstream;
 
@@ -149,11 +150,13 @@ static void initFAST(std::vector<cv::Point> &fastPoints, std::vector<cv::Point> 
 
 static void getUVPoints(const CvMat *i_imCurr, std::vector<cv::Point2i> &outvec, int threshVal);
 
-static void getHullPoints(std::vector<cv::Point2i> &uv_points, std::vector<bool> &marked_points, HullPoint*& start, double maxConcaveAngle, CvMat* vis_img);
+static void getHullPoints(std::vector<cv::Point2i> &uv_points,  HullPoint*& start, double maxConcaveAngle, CvMat* vis_img);
 
 static HullPoint* getSharpestHullPoint(HullPoint* start);
 
-static void getGrid(HullPoint* corner_hull_point, GridPoint*& grid_points, std::vector<cv::Point2i> &uv_points, std::vector<bool>& marked_points, int W, int H, CvMat *vis_img);
+static void getGrid(HullPoint* corner_hull_point, GridPoint*& grid_points, bool& x_axis_first, std::vector<cv::Point2i> &uv_points,  int W, int H, CvMat *vis_img);
+
+static int mrWriteMarkers(GridPoint*& grid_points, bool x_axis_first, CvSize pattern_size, int min_number_of_corners );
 
 //===========================================================================
 // MAIN FUNCTION
@@ -196,6 +199,7 @@ int cvFindUVMarkers( const void* arr, CvSize pattern_size,
   HullPoint* corner_hull_point;
   HullPoint * currHullPoint = hull_points;
   GridPoint* grid_points;
+  bool x_axis_first;
 	
     // debug trial. Martin Rufli, 28. Ocober, 2008
 	int block_size = 0;
@@ -305,11 +309,11 @@ int cvFindUVMarkers( const void* arr, CvSize pattern_size,
  		cvNamedWindow( "ocv_Markers", 1 );
 		cvShowImage( "ocv_Markers", vis_img);
 		//cvSaveImage("pictureVis/OrigImg.png", img);
-		cvWaitKey(0);
+		cvWaitKey(10);
 #endif
 //END------------------------------------------------------------------------
 //
-  CV_CALL( getHullPoints(uv_points, marked_points, hull_points, 0.1745, vis_img) );
+  CV_CALL( getHullPoints(uv_points, hull_points, 0.1745, vis_img) );
 
   CV_CALL( corner_hull_point = getSharpestHullPoint(hull_points));
 
@@ -318,11 +322,13 @@ int cvFindUVMarkers( const void* arr, CvSize pattern_size,
   cvCircle(vis_img, *(corner_hull_point->point), 15, cv::Scalar(150));
   cvShowImage( "ocv_Markers", vis_img);
   //cvSaveImage("pictureVis/OrigImg.png", img);
-		cvWaitKey(0);
+		cvWaitKey(10);
 #endif
 //END------------------------------------------------------------------------
 //
-  CV_CALL( getGrid(corner_hull_point, grid_points, uv_points, marked_points, pattern_size.width, pattern_size.height, vis_img));
+  CV_CALL( getGrid(corner_hull_point, grid_points, x_axis_first, uv_points, pattern_size.width, pattern_size.height, vis_img));
+
+  CV_CALL( mrWriteMarkers(grid_points, x_axis_first, pattern_size, pattern_size.width*pattern_size.height));
 
 	// For image binarization (thresholding)
     // we use an adaptive threshold with a gaussian mask
@@ -545,11 +551,12 @@ int cvFindUVMarkers( const void* arr, CvSize pattern_size,
 				max_count = max_count + 1;
    				mrLabelQuadGroup( output_quad_group, max_count, pattern_size, false );
 
-//V: STOP EDITING HERE
 
 				// write the found corners to output array
 				// Go to __END__, if enough corners have been found
 				found = mrWriteCorners( output_quad_group, max_count, pattern_size, min_number_of_corners);
+//V: STOP EDITING HERE
+        
 				if (found == -1 || found == 1)
 					__CV_EXIT__;
 			}
@@ -2447,7 +2454,7 @@ double angle3p(cv::Point *a,cv::Point *b,cv::Point *c){
   return angle;
 }
 
-#define maxDistSample 6.0
+#define maxDistSample 7.0
 double getMaxDistance(cv::Point* currPoint, std::vector<cv::Point> & uv_points){
   std::vector<int> ordered;
   for (int i=0;i<(int)(uv_points.size());i++){
@@ -2489,7 +2496,10 @@ int findLeftmostCorner(std::vector<cv::Point2i> &uv_points){
 }
 
 
-static void getHullPoints(std::vector<cv::Point2i> &uv_points, std::vector<bool> &marked_points, HullPoint*& start, double maxConcaveAngle, CvMat* vis_img){
+static void getHullPoints(std::vector<cv::Point2i> &uv_points,  HullPoint*& start, double maxConcaveAngle, CvMat* vis_img){
+  std::vector<bool> marked_points;
+  for (auto p : uv_points)
+    marked_points.push_back(false);
   int leftMostCornerIndex = findLeftmostCorner(uv_points);
   start = new HullPoint(&(uv_points[leftMostCornerIndex]));
   HullPoint* currHullPoint = start;
@@ -2588,7 +2598,10 @@ cv::Point2d multiply(cv::Mat M, cv::Point2i p){
   return output;
 }
 
-static void getGrid(HullPoint* corner_hull_point, GridPoint*& grid_points, std::vector<cv::Point2i> &uv_points, std::vector<bool>& marked_points, int W, int H, CvMat *vis_img){
+static void getGrid(HullPoint* corner_hull_point, GridPoint*& grid_points, bool& x_axis_first, std::vector<cv::Point2i> &uv_points,  int W, int H, CvMat *vis_img){
+  std::vector<bool> marked_points;
+  for (auto p : uv_points)
+    marked_points.push_back(false);
   std::cout << "corner point is :" << *(corner_hull_point->point) << std::endl;
   HullPoint* hull_point_current = corner_hull_point;
   grid_points = new GridPoint(hull_point_current->point);
@@ -2601,78 +2614,133 @@ static void getGrid(HullPoint* corner_hull_point, GridPoint*& grid_points, std::
   grid_point_current->right->left = grid_point_current;
   grid_point_current->below->above = grid_point_current;
 
-  bool x_axis_first;
+  bool first_line = true;
   HullPoint* hull_point_potential_end_a = hull_point_current;
   HullPoint* hull_point_potential_end_b = hull_point_current;
   HullPoint* hull_point_last = hull_point_current;
-  for (int i=0; i<W; i++){
+  for (int i=0; i<W-1; i++){
     hull_point_potential_end_a = hull_point_potential_end_a->right;
   }
-  for (int i=0; i<H; i++){
+  for (int i=0; i<H-1; i++){
     hull_point_potential_end_b = hull_point_potential_end_b->right;
   }
   for (int i=0; i<(H+W-2); i++){
     hull_point_last = hull_point_last->right;
   }
 
+  /* std::cout << "a: " <<  *hull_point_potential_end_a->point << std::endl; */
+  /* std::cout << "b: " <<  *hull_point_potential_end_b->point << std::endl; */
+  /* cv::waitKey(0); */
+
   cv::Mat transformer(cv::Size(2,2), CV_32F);
   do {
     do {
-    auto xvec = *(grid_point_current->right->point) - *(grid_point_current->point);
-    auto yvec = *(grid_point_current->below->point) - *(grid_point_current->point);
-    transformer.at<float>(cv::Point(0,0)) = xvec.x;
-    transformer.at<float>(cv::Point(1,0)) = yvec.x;
-    transformer.at<float>(cv::Point(0,1)) = xvec.y;
-    transformer.at<float>(cv::Point(1,1)) = yvec.y;
-    std::cout << "inverted transformer" << std::endl << transformer <<std::endl;
-    transformer = transformer.inv();
-    std::cout << "using transformer" << std::endl << transformer <<std::endl;
-    cv::Point2d transPoint;
-    for (int i=0; i<(int)(uv_points.size()); i++){
-      if ((marked_points[i]))
-        if ((&(uv_points[i])!=hull_point_potential_end_a->point) && (&(uv_points[i])!=hull_point_potential_end_b->point)){
-        std::cout << "uv_point " << uv_points[i] << " is marked and not at the end, skipping it." << std::endl;
-        continue;
-      }
-      transPoint = multiply(transformer,(uv_points[i]-*(grid_point_current->point)));
-      std::cout << "uv_point " << uv_points[i] << " shifted to " << (uv_points[i]-*(grid_point_current->point)) << " transformed to "<< transPoint << std::endl;
-      if ((transPoint.x > 0.5) && (transPoint.x < 1.5))
-        if ((transPoint.y > 0.5) && (transPoint.y < 1.5)){
-          std::cout << "Found new grid point at:" << uv_points[i] << std::endl;
-          //VISUALIZATION--------------------------------------------------------------
-#if VIS
-          cvCircle(vis_img, uv_points[i], 12, cv::Scalar(255));
-          cvNamedWindow( "ocv_Markers", 1 );
-          cvShowImage( "ocv_Markers", vis_img);
-          cvWaitKey(10);
-#endif
-          //END------------------------------------------------------------------------
-          grid_point_current->right->below = new GridPoint(&(uv_points[i]));
-          grid_point_current->below->right = grid_point_current->right->below;
-          grid_point_current->right->below->above = grid_point_current->right;
-          grid_point_current->right->below->left = grid_point_current->below;
-          marked_points[i] = true;
+      std::cout << "start point: " <<  *(grid_point_current->point) << std::endl;
+      std::cout << "right point: " <<  *(grid_point_current->right->point) << std::endl;
+      std::cout << "below point: " <<  *(grid_point_current->below->point) << std::endl;
+
+      auto xvec = *(grid_point_current->right->point) - *(grid_point_current->point);
+      auto yvec = *(grid_point_current->below->point) - *(grid_point_current->point);
+      transformer.at<float>(cv::Point(0,0)) = xvec.x;
+      transformer.at<float>(cv::Point(1,0)) = yvec.x;
+      transformer.at<float>(cv::Point(0,1)) = xvec.y;
+      transformer.at<float>(cv::Point(1,1)) = yvec.y;
+      std::cout << "inverted transformer" << std::endl << transformer <<std::endl;
+      transformer = transformer.inv();
+      std::cout << "using transformer" << std::endl << transformer <<std::endl;
+      cv::Point2d transPoint;
+      for (int i=0; i<(int)(uv_points.size()); i++){
+        if ((marked_points[i])){
+          bool at_end = false;
+          if (hull_point_potential_end_a != nullptr)
+            if (&(uv_points[i])==hull_point_potential_end_a->right->point)
+              at_end = true;
+          if (hull_point_potential_end_b != nullptr)
+            if (&(uv_points[i])==hull_point_potential_end_b->right->point)
+              at_end = true;
+
+          /* if (at_end) */
+          /*   std::cout << "at end" << std::endl; */
+
+          if (!at_end){
+            std::cout << "uv_point " << uv_points[i] << " is marked and not at the end, skipping it." << std::endl;
+            continue;
+          }
         }
-    }
+        transPoint = multiply(transformer,(uv_points[i]-*(grid_point_current->point)));
+        std::cout << "uv_point " << uv_points[i] << " shifted to " << (uv_points[i]-*(grid_point_current->point)) << " transformed to "<< transPoint << std::endl;
+        if ((transPoint.x > 0.5) && (transPoint.x < 1.5))
+          if ((transPoint.y > 0.5) && (transPoint.y < 1.5)){
+            std::cout << "Found new grid point at:" << uv_points[i] << std::endl;
+            //VISUALIZATION--------------------------------------------------------------
+#if VIS
+            cvCircle(vis_img, uv_points[i], 12, cv::Scalar(255));
+            cvNamedWindow( "ocv_Markers", 1 );
+            cvShowImage( "ocv_Markers", vis_img);
+            cvWaitKey(10);
+#endif
+            //END------------------------------------------------------------------------
+            grid_point_current->right->below = new GridPoint(&(uv_points[i]));
+            grid_point_current->below->right = grid_point_current->right->below;
+            grid_point_current->right->below->above = grid_point_current->right;
+            grid_point_current->right->below->left = grid_point_current->below;
+            marked_points[i] = true;
+
+            if (&(uv_points[i]) == hull_point_last->point){
+              std::cout << "Finished grid extraction!" << std::endl;
+              return;
+            }
+          }
+      }
+      if (grid_point_current->below->right == nullptr){
+        if (hull_point_potential_end_a != nullptr)
+          if (grid_point_current->point == hull_point_potential_end_a->point){
+            x_axis_first = true;
+            hull_point_potential_end_a = hull_point_potential_end_a->right;
+            hull_point_potential_end_b = nullptr;
+            delete grid_point_current->right;
+            grid_point_current->right = nullptr;
+            /* std::cout << "a: " <<  *hull_point_potential_end_a->point << std::endl; */
+            /* cv::waitKey(0); */
+            break;
+          }
+        if (hull_point_potential_end_b != nullptr)
+          if (grid_point_current->point == hull_point_potential_end_b->point){
+            x_axis_first = false;
+            hull_point_potential_end_b = hull_point_potential_end_b->right;
+            hull_point_potential_end_a = nullptr;
+            delete grid_point_current->right;
+            grid_point_current->right = nullptr;
+            /* std::cout << "b: " <<  *hull_point_potential_end_b->point << std::endl; */
+            /* cv::waitKey(0); */
+            break; }
+
+        /* std::cout << "Could not find a valid next point!" << std::endl; */
+        /* std::cout << "b: " <<  *hull_point_potential_end_b->point << std::endl; */
+        /* std::raise(SIGSEGV); */
+        /* cv::waitKey(0); */
+      }
+
       hull_point_current = hull_point_current->right;
       grid_point_current = grid_point_current->right;
-      grid_point_current->right = new GridPoint(hull_point_current->right->point);
-      grid_point_current->right->left = grid_point_current;
 
-      if (hull_point_current == hull_point_potential_end_a){
-        x_axis_first = true;
-        hull_point_potential_end_a = hull_point_potential_end_a->right;
-        break;
-      }
-      if (hull_point_current == hull_point_potential_end_b){
-        x_axis_first = false;
-        hull_point_potential_end_b = hull_point_potential_end_b->right;
-        break;
+
+      if (first_line){
+        grid_point_current->right = new GridPoint(hull_point_current->right->point);
+        grid_point_current->right->left = grid_point_current;
       }
 
+      if (grid_point_current->right == nullptr){
+        if (x_axis_first)
+          hull_point_potential_end_a = hull_point_potential_end_a->right;
+        else
+          hull_point_potential_end_b = hull_point_potential_end_b->right;
+        break;
+      }
 
-    
-  } while (true);
+
+    } while (true);
+    first_line = false;
     if (hull_point_current == hull_point_last){
       break;
     }
@@ -2688,11 +2756,197 @@ static void getGrid(HullPoint* corner_hull_point, GridPoint*& grid_points, std::
     grid_point_first_in_axis = grid_point_current;
 
 
-} while (true);
+  } while (true);
 
-  cvWaitKey(0);
+  std::cout << "Invalid state!" <<std::endl;
+
 }
 
+static int mrWriteMarkers(GridPoint*& grid_points, bool x_axis_first,  CvSize pattern_size, int min_number_of_corners ){
+	// Initialize
+	int corner_count = 0;
+	bool flagRow = false;
+	bool flagColumn = false;
+	int maxPattern_sizeRow = -1;
+	int maxPattern_sizeColumn = -1;
+
+
+	// Return variable
+	int internal_found = 0;
+	
+
+	// Compute the minimum and maximum row / column ID
+	// (it is unlikely that more than 8bit checkers are used per dimension)
+	int min_row		=  127;
+	int max_row		= -127;
+	int min_column	=  127;
+	int max_column	= -127;
+
+	for(int i = 0; i < count; i++ )
+    {
+		CvCBQuad* q = output_quads[i];
+		
+		for(int j = 0; j < 4; j++ )
+		{
+			if( (q->corners[j])->row > max_row)
+				max_row = (q->corners[j])->row;
+			if( (q->corners[j])->row < min_row)
+				min_row = (q->corners[j])->row;
+			if( (q->corners[j])->column > max_column)
+				max_column = (q->corners[j])->column;
+			if( (q->corners[j])->column < min_column)
+				min_column = (q->corners[j])->column;
+		}
+	}
+
+
+	// If in a given direction the target pattern size is reached, we know exactly how
+	// the checkerboard is oriented.
+	// Else we need to prepare enought "dummy" corners for the worst case.
+	for(int i = 0; i < count; i++ )
+    {
+		CvCBQuad* q = output_quads[i];
+		
+		for(int j = 0; j < 4; j++ )
+		{
+			if( (q->corners[j])->column == max_column && (q->corners[j])->row != min_row && (q->corners[j])->row != max_row )
+			{
+				if( (q->corners[j]->needsNeighbor) == false)
+				{
+					// We know, that the target pattern size is reached
+					// in column direction
+					flagColumn = true;
+				}
+			}
+			if( (q->corners[j])->row == max_row && (q->corners[j])->column != min_column && (q->corners[j])->column != max_column )
+			{
+				if( (q->corners[j]->needsNeighbor) == false)
+				{
+					// We know, that the target pattern size is reached
+					// in row direction
+					flagRow = true;
+				}
+			}
+		}
+	}
+
+	if( flagColumn == true)
+	{
+		if( max_column - min_column == pattern_size.width + 1)
+		{
+			maxPattern_sizeColumn = pattern_size.width;
+			maxPattern_sizeRow = pattern_size.height;
+		}
+		else
+		{
+			maxPattern_sizeColumn = pattern_size.height;
+			maxPattern_sizeRow = pattern_size.width;
+		}
+	}
+	else if( flagRow == true)
+	{
+		if( max_row - min_row == pattern_size.width + 1)
+		{
+			maxPattern_sizeRow = pattern_size.width;
+			maxPattern_sizeColumn = pattern_size.height;
+		}
+		else
+		{
+			maxPattern_sizeRow = pattern_size.height;
+			maxPattern_sizeColumn = pattern_size.width;
+		}
+	}
+	else
+	{
+		// If target pattern size is not reached in at least one of the two
+		// directions,  then we do not know where the remaining corners are
+		// located. Account for this.
+		maxPattern_sizeColumn = max(pattern_size.width, pattern_size.height);
+		maxPattern_sizeRow = max(pattern_size.width, pattern_size.height);
+	}
+
+
+	// Open the output files
+	ofstream cornersX("cToMatlab/cornersX.txt");
+	ofstream cornersY("cToMatlab/cornersY.txt");
+	ofstream cornerInfo("cToMatlab/cornerInfo.txt");
+
+
+	// Write the corners in increasing order to the output file
+	for(int i = min_row + 1; i < maxPattern_sizeRow + min_row + 1; i++)
+	{
+		for(int j = min_column + 1; j < maxPattern_sizeColumn + min_column + 1; j++)
+		{
+			// Reset the iterator
+			int iter = 1;
+
+			for(int k = 0; k < count; k++)
+			{
+				for(int l = 0; l < 4; l++)
+				{
+					if(((output_quads[k])->corners[l]->row == i) && ((output_quads[k])->corners[l]->column == j) )
+					{
+						// Only write corners to the output file, which are connected
+						// i.e. only if iter == 2
+						if( iter == 2)
+						{
+							// The respective row and column have been found, print it to
+							// the output file, only do this once
+							cornersX << (output_quads[k])->corners[l]->pt.x;
+							cornersX << " ";
+							cornersY << (output_quads[k])->corners[l]->pt.y;
+							cornersY << " ";
+
+							corner_count++;
+						}
+						
+
+						// If the iterator is larger than two, this means that more than
+						// two corners have the same row / column entries. Then some
+						// linking errors must have occured and we should not use the found
+						// pattern
+						if (iter > 2)
+							return -1;
+
+						iter++;
+					}
+				}
+			}
+
+			// If the respective row / column is non - existent or is a border corner
+			if (iter == 1 || iter == 2)
+			{
+				cornersX << -1;
+				cornersX << " ";
+				cornersY << -1;
+				cornersY << " ";
+			}
+		}
+		cornersX << endl;
+		cornersY << endl;
+	}
+
+
+	// Write to the corner matrix size info file
+	cornerInfo << maxPattern_sizeRow<< " " << maxPattern_sizeColumn << endl;
+
+
+	// Close the output files
+	cornersX.close(); 
+	cornersY.close();
+	cornerInfo.close();
+
+
+	// check whether enough corners have been found
+	if (corner_count >= min_number_of_corners)
+		internal_found = 1;
+	else
+		internal_found = 0;
+
+
+	// pattern found, or not found?
+	return internal_found;
+}
 //===========================================================================
 // END OF FILE
 //===========================================================================
