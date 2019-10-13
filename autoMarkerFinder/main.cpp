@@ -71,6 +71,7 @@ int main( int argc, char** argv )
 	ofstream error("outputImages/error.txt");
 
 
+  bool DEBUG = true;
 	// Read the "argv" function input arguments
 	for(int i = 1; i < argc; i++ )
 	{
@@ -101,6 +102,10 @@ int main( int argc, char** argv )
 				error.close();
 				return -1;
 			}
+		}
+		else if( strcmp( s, "-q" ) == 0 )
+		{
+      DEBUG = false;
 		}
 		else if( s[0] != '-' )
 			input_filename = s;
@@ -156,6 +161,7 @@ int main( int argc, char** argv )
 		CvSize text_size = {0,0};
 		int base_line = 0;
 		// Load the correct image...
+    /* std::cout << imagename << std::endl; */
 		if( f && fgets( imagename, sizeof(imagename)-2, f ))
 		{
 
@@ -221,7 +227,7 @@ int main( int argc, char** argv )
 		else
 		{
 			found = cvFindUVMarkers( view, board_size,
-					image_points_buf, &count, min_number_of_corners );
+					image_points_buf, &count, min_number_of_corners, DEBUG );
 		}
 
 		if( !view )

@@ -74,6 +74,11 @@ end
 %callString = (['cd autoCornerFinder & FindCornersVisualSave.exe -w ' num2str(n_sq_x+1) ' -h ' num2str(n_sq_y+1) ' -m ' num2str((n_sq_x+1) * (n_sq_y+1)) ' pictures.txt']);
 
 callBack   = system(callString);
+
+% callString2 = (['cat cToMatlab/cornersX.txt; echo n; cat cToMatlab/cornersY.txt; ']);
+% disp('Calling print');
+% callBack2   = system(callString2)
+
 cd ..
 %Do error checking
 if callBack == 0

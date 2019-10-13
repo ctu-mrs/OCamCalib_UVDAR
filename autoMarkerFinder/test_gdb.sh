@@ -1,1 +1,1 @@
-gdb --args ./FindMarkers -w 6 -h 9 -m 48 pictures.txt
+gdb --args ./FindMarkers -w 8 -h 6 -m 48 pictures.txt

@@ -20,17 +20,17 @@
 function [callBack, Xp_abs, Yp_abs] = get_checkerboard_corners(kk,use_corner_find,calib_data)
 
 fclose('all');
-if exist('autoCornerFinder/cToMatlab/cornerInfo.txt','file')
-    delete('autoCornerFinder/cToMatlab/cornerInfo.txt');
+if exist('autoMarkerFinder/cToMatlab/cornerInfo.txt','file')
+    delete('autoMarkerFinder/cToMatlab/cornerInfo.txt');
 end
-if exist('autoCornerFinder/cToMatlab/cornersX.txt','file')
-    delete('autoCornerFinder/cToMatlab/cornersX.txt');
+if exist('autoMarkerFinder/cToMatlab/cornersX.txt','file')
+    delete('autoMarkerFinder/cToMatlab/cornersX.txt');
 end
-if exist('autoCornerFinder/cToMatlab/cornersY.txt','file')
-    delete('autoCornerFinder/cToMatlab/cornersY.txt');
+if exist('autoMarkerFinder/cToMatlab/cornersY.txt','file')
+    delete('autoMarkerFinder/cToMatlab/cornersY.txt');
 end
-if exist('autoCornerFinder/cToMatlab/error.txt','file')
-    delete('autoCornerFinder/cToMatlab/error.txt');
+if exist('autoMarkerFinder/cToMatlab/error.txt','file')
+    delete('autoMarkerFinder/cToMatlab/error.txt');
 end
 
 %INITIALIZATIONS
@@ -43,7 +43,7 @@ Xp_abs = 0;
 Yp_abs = 0;
 
 %Tell the automatic corner extractor, which image file to process
-fid = fopen('./autoCornerFinder/pictures.txt','w');
+fid = fopen('./autoMarkerFinder/pictures.txt','w');
 fprintf(fid,'../%s',calib_data.L{kk});
 fclose(fid);
 
@@ -61,17 +61,17 @@ fclose(fid);
 %Visualization turned OFF
 cd autoMarkerFinder;
 
-callString = (['FindMarkers -w ' num2str(calib_data.n_sq_x+1) ' -h ' num2str(calib_data.n_sq_y+1) ' -m ' num2str((calib_data.n_sq_x+1) * (calib_data.n_sq_y+1)) ' pictures.txt']);
+callString = (['FindMarkers -w ' num2str(calib_data.n_sq_x+1) ' -h ' num2str(calib_data.n_sq_y+1) ' -m ' num2str((calib_data.n_sq_x+1) * (calib_data.n_sq_y+1)) ' pictures.txt -q']);
 
 if ~ispc %if not Windows
     callString = ['./' callString];
 end
 %Visualization turned ON
-%callString = (['cd autoCornerFinder & FindCornersVisual.exe -w ' num2str(n_sq_x+1) ' -h ' num2str(n_sq_y+1) ' -m ' num2str((n_sq_x+1) * (n_sq_y+1)) ' pictures.txt']);
+%callString = (['cd autoMarkerFinder & FindCornersVisual.exe -w ' num2str(n_sq_x+1) ' -h ' num2str(n_sq_y+1) ' -m ' num2str((n_sq_x+1) * (n_sq_y+1)) ' pictures.txt']);
 
 %Visualization turned ON and Saving of the images turned ON
 %WARNING: Does somehow not work under Windows 2000...
-%callString = (['cd autoCornerFinder & FindCornersVisualSave.exe -w ' num2str(n_sq_x+1) ' -h ' num2str(n_sq_y+1) ' -m ' num2str((n_sq_x+1) * (n_sq_y+1)) ' pictures.txt']);
+%callString = (['cd autoMarkerFinder & FindCornersVisualSave.exe -w ' num2str(n_sq_x+1) ' -h ' num2str(n_sq_y+1) ' -m ' num2str((n_sq_x+1) * (n_sq_y+1)) ' pictures.txt']);
 
 callBack   = system(callString);
 cd ..
@@ -84,7 +84,8 @@ end
 
 if callBack ~= 1
     %Display the error message
-    filename = 'autoCornerFinder/cToMatlab/error.txt';
+    filename = 'autoMarkerFinder/cToMatlab/error.txt';
+    disp(filename);
     fid = fopen(filename, 'r');
     line = fgetl(fid);
     fclose(fid);
@@ -93,19 +94,19 @@ if callBack ~= 1
 end
 
 %Open the corner size information file
-filename = 'autoCornerFinder/cToMatlab/cornerInfo.txt';
+filename = 'autoMarkerFinder/cToMatlab/cornerInfo.txt';
 fid = fopen(filename, 'r');
 cornerInfo = fscanf(fid, '%g %g', [1 2]);   
 fclose(fid);
 
 %Open the files with the found corners
-filename = 'autoCornerFinder/cToMatlab/cornersX.txt';
+filename = 'autoMarkerFinder/cToMatlab/cornersX.txt';
 fid = fopen(filename, 'r');
 cornersX = fscanf(fid, '%g %g', [cornerInfo(2) cornerInfo(1)]);
 cornersX = cornersX';
 fclose(fid);
 
-filename = 'autoCornerFinder/cToMatlab/cornersY.txt';
+filename = 'autoMarkerFinder/cToMatlab/cornersY.txt';
 fid = fopen(filename, 'r');
 cornersY = fscanf(fid, '%g %g', [cornerInfo(2) cornerInfo(1)]);
 cornersY = cornersY';
@@ -495,10 +496,10 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %We delete the interface files between Matlab and c++, in order to prevent
 %reloading old data in case of some errors.
-delete('autoCornerFinder/cToMatlab/cornerInfo.txt');
-delete('autoCornerFinder/cToMatlab/cornersX.txt');
-delete('autoCornerFinder/cToMatlab/cornersY.txt');
-delete('autoCornerFinder/cToMatlab/error.txt');
+delete('autoMarkerFinder/cToMatlab/cornerInfo.txt');
+delete('autoMarkerFinder/cToMatlab/cornersX.txt');
+delete('autoMarkerFinder/cToMatlab/cornersY.txt');
+delete('autoMarkerFinder/cToMatlab/error.txt');
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %Display finished message
