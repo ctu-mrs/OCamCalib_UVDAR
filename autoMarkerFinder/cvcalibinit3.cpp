@@ -328,241 +328,11 @@ int cvFindUVMarkers( const void* arr, CvSize pattern_size,
 //
   CV_CALL( getGrid(corner_hull_point, grid_points, x_axis_first, uv_points, pattern_size.width, pattern_size.height, vis_img));
 
-  CV_CALL( mrWriteMarkers(grid_points, x_axis_first, pattern_size, pattern_size.width*pattern_size.height));
+  CV_CALL( found = mrWriteMarkers(grid_points, x_axis_first, pattern_size, pattern_size.width*pattern_size.height));
 
-	// For image binarization (thresholding)
-    // we use an adaptive threshold with a gaussian mask
-	// ATTENTION: Gaussian thresholding takes MUCH more time than Mean thresholding!
-    block_size = cvRound(MIN(img->cols,img->rows)*0.2)|1;
-    cvAdaptiveThreshold( img, thresh_img, 255, CV_ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY, block_size, 0 );
-	cvCopy( thresh_img, thresh_img_save);
-
-
-	// PART 1: FIND LARGEST PATTERN
-	//-----------------------------------------------------------------------
-	// Checker patterns are tried to be found by dilating the background and
-	// then applying a canny edge finder on the closed contours (checkers).
-	// Try one dilation run, but if the pattern is not found, repeat until
-	// max_dilations is reached.
-    for( dilations = min_dilations; dilations <= max_dilations; dilations++ )
-    {
-		// Calling "cvCopy" again is much faster than rerunning "cvAdaptiveThreshold"
-		cvCopy( thresh_img_save, thresh_img);
-		
-// EVALUATE TIMER
-#if TIMER
-		float time0_2 = (float) (clock() - start_time) / CLOCKS_PER_SEC;
-		FindUVMarkersStream << "Time 0.2 for cvFindUVMarkers was " << time0_2 << " seconds." << endl;
-#endif
-
-
-		// MARTIN's Code
-		// Use both a rectangular and a cross kernel. In this way, a more
-		// homogeneous dilation is performed, which is crucial for small, 
-		// distorted checkers. Use the CROSS kernel first, since its action
-		// on the image is more subtle
-		IplConvKernel *kernel1 = cvCreateStructuringElementEx(3,3,1,1,CV_SHAPE_CROSS,NULL);
-		IplConvKernel *kernel2 = cvCreateStructuringElementEx(3,3,1,1,CV_SHAPE_RECT,NULL);
-
-        if (dilations >= 1)
-			cvDilate( thresh_img, thresh_img, kernel1, 1);
-		if (dilations >= 2)
-			cvDilate( thresh_img, thresh_img, kernel2, 1);
-		if (dilations >= 3)
-			cvDilate( thresh_img, thresh_img, kernel1, 1);
-		if (dilations >= 4)
-			cvDilate( thresh_img, thresh_img, kernel2, 1);
-		if (dilations >= 5)
-			cvDilate( thresh_img, thresh_img, kernel1, 1);
-		if (dilations >= 6)
-			cvDilate( thresh_img, thresh_img, kernel2, 1);
-
-// EVALUATE TIMER
-#if TIMER
-		float time0_3 = (float) (clock() - start_time) / CLOCKS_PER_SEC;
-		FindUVMarkersStream << "Time 0.3 for cvFindUVMarkers was " << time0_3 << " seconds." << endl;
-#endif
-
-
-        // In order to find rectangles that go to the edge, we draw a white
-		// line around the image edge. Otherwise FindContours will miss those 
-		// clipped rectangle contours. The border color will be the image mean,
-		// because otherwise we risk screwing up filters like cvSmooth()
-        cvRectangle( thresh_img, cvPoint(0,0), cvPoint(thresh_img->cols-1,
-                     thresh_img->rows-1), CV_RGB(255,255,255), 3, 8);
-
-
-		// Generate quadrangles in the following function
-		// "quad_count" is the number of cound quadrangles
-        CV_CALL( quad_count = icvGenerateQuads( &quads, &corners, storage, thresh_img, flags, dilations, true ));
-        if( quad_count <= 0 )
-            continue;
-
-// EVALUATE TIMER
-#if TIMER
-		float time0_4 = (float) (clock() - start_time) / CLOCKS_PER_SEC;
-		FindUVMarkersStream << "Time 0.4 for cvFindUVMarkers was " << time0_4 << " seconds." << endl;
-#endif
-
-		
-        // The following function finds and assigns neighbor quads to every 
-		// quadrangle in the immediate vicinity fulfilling certain 
-		// prerequisites
-        CV_CALL( mrFindQuadNeighbors2( quads, quad_count, dilations));
-		
-
-		// Allocate memory
-        CV_CALL( quad_group = (CvCBQuad**)cvAlloc( sizeof(quad_group[0]) * quad_count));
-        CV_CALL( corner_group = (CvCBCorner**)cvAlloc( sizeof(corner_group[0]) * quad_count*4 ));
-
-
-		// The connected quads will be organized in groups. The following loop
-		// increases a "group_idx" identifier.
-		// The function "icvFindConnectedQuads assigns all connected quads
-		// a unique group ID.
-		// If more quadrangles were assigned to a given group (i.e. connected)
-		// than are expected by the input variable "pattern_size", the 
-		// function "icvCleanFoundConnectedQuads" erases the surplus
-		// quadrangles by minimizing the convex hull of the remaining pattern.
-        for( group_idx = 0; ; group_idx++ )
-        {
-          int count;
-          CV_CALL( count = icvFindConnectedQuads( quads, quad_count, quad_group, group_idx, storage, dilations ));
-
-          if( count == 0 )
-            break;
-
-          CV_CALL( count = icvCleanFoundConnectedQuads( count, quad_group, pattern_size ));
-
-
-          // MARTIN's Code
-          // To save computational time, only proceed, if the number of
-          // found quads during this dilation run is larger than the 
-          // largest previous found number
-          if( count >= max_count)
-          {
-            // set max_count to its new value
-            max_count = count;
-            max_dilation_run_ID = dilations;
-
-            // The following function labels all corners of every quad 
-            // with a row and column entry.
-            // "count" specifies the number of found quads in "quad_group"
-            // with group identifier "group_idx"
-            // The last parameter is set to "true", because this is the
-            // first function call and some initializations need to be
-            // made.
-            mrLabelQuadGroup( quad_group, max_count, pattern_size, true );
-
-
-            // Allocate memory
-            CV_CALL( output_quad_group = (CvCBQuad**)cvAlloc( sizeof(output_quad_group[0]) * ((pattern_size.height+2) * (pattern_size.width+2)) ));
-
-
-            // The following function copies every member of "quad_group"
-            // to "output_quad_group", because "quad_group" will be 
-            // overwritten during the next loop pass.
-            // "output_quad_group" is a true copy of "quad_group" and 
-            // later used for output
-            mrCopyQuadGroup( quad_group, output_quad_group, max_count );
-          }
-        }
-		
-
-		// Free the allocated variables
-        cvFree( &quads );
-        cvFree( &corners );
-    }
-	
-
-// EVALUATE TIMER
-#if TIMER
-	float time1 = (float) (clock() - start_time) / CLOCKS_PER_SEC;
-	FindUVMarkersStream.open("timer/FindUVMarkers.txt", ofstream::app);
-	FindUVMarkersStream << "Time 1 for cvFindUVMarkers was " << time1 << " seconds." << endl;
-#endif
-
-	// If enough corners have been found already, then there is no need for PART 2 ->__CV_EXIT__
-	found = mrWriteCorners( output_quad_group, max_count, pattern_size, min_number_of_corners);
-		if (found == -1 || found == 1)
-			__CV_EXIT__;
-
-	// PART 2: AUGMENT LARGEST PATTERN
-	//-----------------------------------------------------------------------
-	// Instead of saving all found quads of all dilation runs from PART 1, we
-	// just recompute them again, but skipping the dilation run which 
-	// produced the maximum number of found quadrangles.
-	// In essence the first section of PART 2 is identical to the first
-	// section of PART 1.
-    for( dilations = max_dilations; dilations >= min_dilations; dilations-- )
-    {
-		//if(max_dilation_run_ID == dilations)
-		//	continue;
         
-		// Calling "cvCopy" again is much faster than rerunning "cvAdaptiveThreshold"
-		cvCopy( thresh_img_save, thresh_img);
-        
-		IplConvKernel *kernel1 = cvCreateStructuringElementEx(3,3,1,1,CV_SHAPE_CROSS,NULL);
-		IplConvKernel *kernel2 = cvCreateStructuringElementEx(3,3,1,1,CV_SHAPE_RECT,NULL);
-
-        if (dilations >= 1)
-			cvDilate( thresh_img, thresh_img, kernel1, 1);
-		if (dilations >= 2)
-			cvDilate( thresh_img, thresh_img, kernel2, 1);
-		if (dilations >= 3)
-			cvDilate( thresh_img, thresh_img, kernel1, 1);
-		if (dilations >= 4)
-			cvDilate( thresh_img, thresh_img, kernel2, 1);
-		if (dilations >= 5)
-			cvDilate( thresh_img, thresh_img, kernel1, 1);
-		if (dilations >= 6)
-			cvDilate( thresh_img, thresh_img, kernel2, 1);
-    
-        cvRectangle( thresh_img, cvPoint(0,0), cvPoint(thresh_img->cols-1,
-                     thresh_img->rows-1), CV_RGB(255,255,255), 3, 8);
-
-
-        CV_CALL( quad_count = icvGenerateQuads( &quads, &corners, storage, thresh_img, flags, dilations, false ));
-        if( quad_count <= 0 )
-            continue;
-			
-
-		
-		// MARTIN's Code
-		// The following loop is executed until no more newly found quads
-		// can be matched to one of the border corners of the largest found
-		// pattern from PART 1.
-		// The function "mrAugmentBestRun" tests whether a quad can be linked
-		// to the existng pattern.
-		// The function "mrLabelQuadGroup" then labels the newly added corners
-		// with the respective row and column entries.
-		int feedBack = -1;
-		while ( feedBack == -1)
-		{
-			feedBack = mrAugmentBestRun( quads, quad_count, dilations, 
-            							 output_quad_group, max_count, max_dilation_run_ID );
-			
-
-
-			// if we have found a new matching quad
-			if (feedBack == -1)
-			{
-				// increase max_count by one
-				max_count = max_count + 1;
-   				mrLabelQuadGroup( output_quad_group, max_count, pattern_size, false );
-
-
-				// write the found corners to output array
-				// Go to __END__, if enough corners have been found
-				found = mrWriteCorners( output_quad_group, max_count, pattern_size, min_number_of_corners);
-//V: STOP EDITING HERE
-        
-				if (found == -1 || found == 1)
-					__CV_EXIT__;
-			}
-		}
-	}
-
+  if (found == -1 || found == 1)
+    __CV_EXIT__;
 
 	// "End of file" jump point
 	// After the command "__CV_EXIT__" the code jumps here
@@ -2763,172 +2533,44 @@ static void getGrid(HullPoint* corner_hull_point, GridPoint*& grid_points, bool&
 }
 
 static int mrWriteMarkers(GridPoint*& grid_points, bool x_axis_first,  CvSize pattern_size, int min_number_of_corners ){
-	// Initialize
-	int corner_count = 0;
-	bool flagRow = false;
-	bool flagColumn = false;
-	int maxPattern_sizeRow = -1;
-	int maxPattern_sizeColumn = -1;
+  GridPoint* grid_point_current;
+  GridPoint* grid_point_line_first;
 
-
-	// Return variable
-	int internal_found = 0;
-	
-
-	// Compute the minimum and maximum row / column ID
-	// (it is unlikely that more than 8bit checkers are used per dimension)
-	int min_row		=  127;
-	int max_row		= -127;
-	int min_column	=  127;
-	int max_column	= -127;
-
-	for(int i = 0; i < count; i++ )
-    {
-		CvCBQuad* q = output_quads[i];
-		
-		for(int j = 0; j < 4; j++ )
-		{
-			if( (q->corners[j])->row > max_row)
-				max_row = (q->corners[j])->row;
-			if( (q->corners[j])->row < min_row)
-				min_row = (q->corners[j])->row;
-			if( (q->corners[j])->column > max_column)
-				max_column = (q->corners[j])->column;
-			if( (q->corners[j])->column < min_column)
-				min_column = (q->corners[j])->column;
-		}
-	}
-
-
-	// If in a given direction the target pattern size is reached, we know exactly how
-	// the checkerboard is oriented.
-	// Else we need to prepare enought "dummy" corners for the worst case.
-	for(int i = 0; i < count; i++ )
-    {
-		CvCBQuad* q = output_quads[i];
-		
-		for(int j = 0; j < 4; j++ )
-		{
-			if( (q->corners[j])->column == max_column && (q->corners[j])->row != min_row && (q->corners[j])->row != max_row )
-			{
-				if( (q->corners[j]->needsNeighbor) == false)
-				{
-					// We know, that the target pattern size is reached
-					// in column direction
-					flagColumn = true;
-				}
-			}
-			if( (q->corners[j])->row == max_row && (q->corners[j])->column != min_column && (q->corners[j])->column != max_column )
-			{
-				if( (q->corners[j]->needsNeighbor) == false)
-				{
-					// We know, that the target pattern size is reached
-					// in row direction
-					flagRow = true;
-				}
-			}
-		}
-	}
-
-	if( flagColumn == true)
-	{
-		if( max_column - min_column == pattern_size.width + 1)
-		{
-			maxPattern_sizeColumn = pattern_size.width;
-			maxPattern_sizeRow = pattern_size.height;
-		}
-		else
-		{
-			maxPattern_sizeColumn = pattern_size.height;
-			maxPattern_sizeRow = pattern_size.width;
-		}
-	}
-	else if( flagRow == true)
-	{
-		if( max_row - min_row == pattern_size.width + 1)
-		{
-			maxPattern_sizeRow = pattern_size.width;
-			maxPattern_sizeColumn = pattern_size.height;
-		}
-		else
-		{
-			maxPattern_sizeRow = pattern_size.height;
-			maxPattern_sizeColumn = pattern_size.width;
-		}
-	}
-	else
-	{
-		// If target pattern size is not reached in at least one of the two
-		// directions,  then we do not know where the remaining corners are
-		// located. Account for this.
-		maxPattern_sizeColumn = max(pattern_size.width, pattern_size.height);
-		maxPattern_sizeRow = max(pattern_size.width, pattern_size.height);
-	}
-
-
-	// Open the output files
-	ofstream cornersX("cToMatlab/cornersX.txt");
+  // Open the output files
+  ofstream cornersX("cToMatlab/cornersX.txt");
 	ofstream cornersY("cToMatlab/cornersY.txt");
 	ofstream cornerInfo("cToMatlab/cornerInfo.txt");
 
+  grid_point_current = grid_points;
+  grid_point_line_first = grid_point_current;
 
-	// Write the corners in increasing order to the output file
-	for(int i = min_row + 1; i < maxPattern_sizeRow + min_row + 1; i++)
-	{
-		for(int j = min_column + 1; j < maxPattern_sizeColumn + min_column + 1; j++)
-		{
-			// Reset the iterator
-			int iter = 1;
-
-			for(int k = 0; k < count; k++)
-			{
-				for(int l = 0; l < 4; l++)
-				{
-					if(((output_quads[k])->corners[l]->row == i) && ((output_quads[k])->corners[l]->column == j) )
-					{
-						// Only write corners to the output file, which are connected
-						// i.e. only if iter == 2
-						if( iter == 2)
-						{
-							// The respective row and column have been found, print it to
-							// the output file, only do this once
-							cornersX << (output_quads[k])->corners[l]->pt.x;
-							cornersX << " ";
-							cornersY << (output_quads[k])->corners[l]->pt.y;
-							cornersY << " ";
-
-							corner_count++;
-						}
-						
-
-						// If the iterator is larger than two, this means that more than
-						// two corners have the same row / column entries. Then some
-						// linking errors must have occured and we should not use the found
-						// pattern
-						if (iter > 2)
-							return -1;
-
-						iter++;
-					}
-				}
-			}
-
-			// If the respective row / column is non - existent or is a border corner
-			if (iter == 1 || iter == 2)
-			{
-				cornersX << -1;
-				cornersX << " ";
-				cornersY << -1;
-				cornersY << " ";
-			}
-		}
+  for (int j=0; j<pattern_size.height; j++){
+    for (int i=0; i<pattern_size.width; i++){
+      cornersX << grid_point_current->point->x;
+      cornersX << " ";
+      cornersY << grid_point_current->point->y;
+      cornersY << " ";
+      if (x_axis_first)
+        grid_point_current = grid_point_current->right;
+      else
+        grid_point_current = grid_point_current->below;
+    }
 		cornersX << endl;
 		cornersY << endl;
-	}
+    if (x_axis_first){
+      grid_point_current = grid_point_line_first->below;
+      grid_point_line_first = grid_point_line_first->below;
+    }
+    else{
+      grid_point_current = grid_point_line_first->right;
+      grid_point_line_first = grid_point_line_first->right;
+    }
+  }
+
 
 
 	// Write to the corner matrix size info file
-	cornerInfo << maxPattern_sizeRow<< " " << maxPattern_sizeColumn << endl;
+	cornerInfo << pattern_size.width << " " << pattern_size.height << endl;
 
 
 	// Close the output files
@@ -2937,15 +2579,8 @@ static int mrWriteMarkers(GridPoint*& grid_points, bool x_axis_first,  CvSize pa
 	cornerInfo.close();
 
 
-	// check whether enough corners have been found
-	if (corner_count >= min_number_of_corners)
-		internal_found = 1;
-	else
-		internal_found = 0;
-
-
 	// pattern found, or not found?
-	return internal_found;
+	return 1;
 }
 //===========================================================================
 // END OF FILE
