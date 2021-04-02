@@ -61,7 +61,7 @@ fclose(fid);
 %Visualization turned OFF
 cd autoMarkerFinder;
 
-callString = (['FindMarkers -w ' num2str(calib_data.n_sq_x+1) ' -h ' num2str(calib_data.n_sq_y+1) ' -m ' num2str((calib_data.n_sq_x+1) * (calib_data.n_sq_y+1)) ' pictures.txt -q']);
+callString = (['FindMarkers.sh -w ' num2str(calib_data.n_sq_x+1) ' -h ' num2str(calib_data.n_sq_y+1) ' -m ' num2str((calib_data.n_sq_x+1) * (calib_data.n_sq_y+1)) ' pictures.txt -q']);
 
 if ~ispc %if not Windows
     callString = ['./' callString];

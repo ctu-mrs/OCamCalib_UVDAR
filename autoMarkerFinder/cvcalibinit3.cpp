@@ -341,8 +341,8 @@ int cvFindUVMarkers( cv::InputArray arr, cv::Size pattern_size,
   error.close();
 
         
-  if (found == -1 || found == 1)
-    return -1;
+  /* if (found == -1 || found == 1) */
+  /*   return -1; */
     /* __CV_EXIT__; */
 
 	// "End of file" jump point
