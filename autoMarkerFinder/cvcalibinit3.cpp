@@ -304,7 +304,7 @@ int cvFindUVMarkers( cv::InputArray arr, cv::Size pattern_size,
 //V: START EDITING HERE
 
 
-  getUVPoints(img, uv_points, 200);
+  getUVPoints(img, uv_points, 150);
   for (auto &uvpt : uv_points)
     marked_points.push_back(false);
 //VISUALIZATION--------------------------------------------------------------
