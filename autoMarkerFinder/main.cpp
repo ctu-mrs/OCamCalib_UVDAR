@@ -31,8 +31,12 @@ If you use this code, please cite the following articles:
 #include <cstdlib>
 #include <iostream>
 
-#include <opencv.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/imgcodecs/imgcodecs.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
+#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -47,21 +51,27 @@ using std::ifstream;
 //===========================================================================
 int main( int argc, char** argv )
 {
+  std::cout << "Starting" << std::endl;
+
+  char cwd[50];
+  getcwd(cwd, sizeof(cwd));
+  std::cout << "CWD: " << cwd << std::endl;
+
 	// CHOOSE METHOD (0= Vladimir Vezhnevets, 1= Martin Rufli)
 	int method = 1;
 
 
 	// Initializations
-	CvSize board_size				= {7,6};
+  cv::Size board_size				= {7,6};
 	const char* input_filename		= 0;
-	CvCapture* capture				= 0;
+  /* CvCapture* capture				= 0; */
 	FILE* f							= 0;
 	char imagename[1024];
-	CvMemStorage* storage;
-	CvSeq* image_points_seq			= 0;
+	/* CvMemStorage* storage; */
+  /* CvSeq* image_points_seq			= 0; */
 	int elem_size;
-	CvPoint2D32f* image_points_buf	= 0;
-	CvSize img_size					= {0,0};
+  std::vector<cv::Point2f> image_points_buf;
+  cv::Size img_size					= {0,0};
 	int found						= -2;
 	int min_number_of_corners		= 42;
 	input_filename					= "pictures.txt";
@@ -127,38 +137,38 @@ int main( int argc, char** argv )
 	{
 		// Try to open a video sequence
 		//capture = cvCreateFileCapture( input_filename ); //OBRAND commented out
-		if( !capture )
-		{
+		/* if( !capture ) */
+		/* { */
 			// Try to open an input image
 			f = fopen( input_filename, "rt" );
 			if( !f )
 				return fprintf( stderr, "The input file could not be opened\n" ), -1;
-		}
+		/* } */
 	}
-	else
-		// Open a live video stream
-		capture = cvCreateCameraCapture(0);
+	/* else */
+	/* 	// Open a live video stream */
+	/* 	capture = cvCreateCameraCapture(0); */
 
 
 	// Nothing could be opened -> error
-	if( !capture && !f )
-		return fprintf( stderr, "Could not initialize video capture\n" ), -2;
+	if( !f )
+		return fprintf( stderr, "Could not obtain input\n" ), -2;
 
 	
 	// Allocate memory
-	elem_size = board_size.width*board_size.height*sizeof(image_points_buf[0]);
-	storage = cvCreateMemStorage( MAX( elem_size*4, 1 << 16 ));
-	image_points_buf = (CvPoint2D32f*)cvAlloc( elem_size );
-	image_points_seq = cvCreateSeq( 0, sizeof(CvSeq), elem_size, storage );
+	/* elem_size = board_size.width*board_size.height*sizeof(image_points_buf[0]); */
+	/* storage = cvCreateMemStorage( MAX( elem_size*4, 1 << 16 )); */
+	/* image_points_buf = (cv::Point2f*)cvAlloc( elem_size ); */
+	/* image_points_seq = cvCreateSeq( 0, sizeof(cv::Seq), elem_size, storage ); */
 
 
-	// For loop which goes through all images specified above
-	for(int j = 1;; j++)
+  // For loop which goes through all images specified above
+	/* for(int j = 1;j<2; j++) */
 	{
 		// Initializations
-		IplImage *view = 0, *view_gray = 0;
+    cv::Mat view, view_gray;
 		int count = 0, blink = 0;
-		CvSize text_size = {0,0};
+    cv::Size text_size = {0,0};
 		int base_line = 0;
 		// Load the correct image...
     /* std::cout << imagename << std::endl; */
@@ -171,9 +181,11 @@ int main( int argc, char** argv )
 			if( l > 0 )
 			{
 				if( imagename[0] == '#' )
-					continue;
+					return -1;
 				// Load as BGR 3 channel image
-				view = cvLoadImage( imagename, 1 );
+        std::cout << "Loading image: " << imagename << std::endl;
+				view = cv::imread(imagename);
+        cv::cvtColor( view, view, cv::COLOR_BGR2GRAY );
 				// Currently the following file formats are supported: 
 				// Windows bitmaps				BMP, DIB
 				// JPEG files					JPEG, JPG, JPE
@@ -185,36 +197,38 @@ int main( int argc, char** argv )
 			}
 		}
 
+    std::cout << imagename << std::endl;
+
 
 		// ...Or capture the correct frame from the video
-		else if( capture )
-		{
-			IplImage* view0 = cvQueryFrame( capture );
-			if( view0 )
-			{
-				view = cvCreateImage( cvGetSize(view0), IPL_DEPTH_8U, view0->nChannels );
-				if( view0->origin == IPL_ORIGIN_BL )
-					cvFlip( view0, view, 0 );
-				else
-					cvCopy( view0, view );
-			}
-		}
+		/* else if( capture ) */
+		/* { */
+		/* 	IplImage* view0 = cvQueryFrame( capture ); */
+		/* 	if( view0 ) */
+		/* 	{ */
+		/* 		view = cvCreateImage( cvGetSize(view0), IPL_DEPTH_8U, view0->nChannels ); */
+		/* 		if( view0->origin == IPL_ORIGIN_BL ) */
+		/* 			cvFlip( view0, view, 0 ); */
+		/* 		else */
+		/* 			cvCopy( view0, view ); */
+		/* 	} */
+		/* } */
 
 		
 		// If no more images are to be processed -> break
-		if( !view)
+		if( view.size == 0)
 		{
-			break;
+			return -1;
 		}
 
 		// If esc key was pressed -> break
-		int key = cvWaitKey(10);
-		if( key == 27)
-		{
-			break;
-		}
+		/* int key = cv::waitKey(10); */
+		/* if( key == 27) */
+		/* { */
+		/* 	break; */
+		/* } */
 
-		img_size = cvGetSize(view);
+		img_size = view.size();
 		
 
 		// Perform the corner finding algorithm
@@ -230,13 +244,12 @@ int main( int argc, char** argv )
 					image_points_buf, &count, min_number_of_corners, DEBUG );
 		}
 
-		if( !view )
-			break;
-		cvReleaseImage( &view );
+		if( view.size == 0 )
+			return -1;
 	}
 
-	if( capture )
-		cvReleaseCapture( &capture );
+	/* if( capture ) */
+	/* 	cvReleaseCapture( &capture ); */
 	
 	return found;
 }

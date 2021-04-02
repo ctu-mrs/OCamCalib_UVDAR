@@ -3,8 +3,8 @@ INCS =
 LIBS = 
 
 
-DEFINCS = -I/usr/local/include -I/usr/include/opencv2
-DEFLIBS = -L/usr/local/lib/ -L/usr/lib/x86_64-linux-gnu/
+DEFINCS = -I/usr/local/include -I/usr/include/opencv4/
+DEFLIBS = -L/usr/local/lib/ -L/usr/lib/x86_64-linux-gnu
 LINKLIBS = -lopencv_core -lopencv_highgui -lopencv_imgproc  -lopencv_imgcodecs -lopencv_videoio
 
 CPP  = g++ -std=c++11
