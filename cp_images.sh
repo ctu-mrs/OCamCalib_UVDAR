@@ -9,5 +9,5 @@ rm i_*.jpg
 num=$1
 for f in $(ls ~/bag_files/uvdar_calib/${num}/*.jpg)
 do
-  cp $f ./i_$( basename ${f} ).jpg
+  cp $f ./i_$( basename ${f} )
 done
