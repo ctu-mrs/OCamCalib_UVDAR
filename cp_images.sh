@@ -11,3 +11,4 @@ for f in $(ls ~/bag_files/uvdar_calib/${num}/*.jpg)
 do
   cp $f ./i_$( basename ${f} )
 done
+echo $num > current_cam.txt
