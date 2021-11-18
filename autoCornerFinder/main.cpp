@@ -31,7 +31,9 @@ If you use this code, please cite the following articles:
 #include <cstdlib>
 #include <iostream>
 
-#include <opencv.hpp>
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/core_c.h>
+#include <opencv2/videoio/videoio_c.h>
 
 #include <stdio.h>
 #include <string.h>
