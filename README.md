@@ -22,6 +22,11 @@ The tool itself is then used exactly as with chessboard-like calibration pattern
 
 The LED markers are equivalent to internal corners of the chessboard grid.
 
+For good calibration, I recommend taking at least 15 pictures, such that in each of them are visible all the LEDs of the pattern and such that the LED blobs are not larger than few pixels.
+Furthermore, in order for the calibration to capture the curvature of the lens accurately, the pictures must be representative of the whole image.
+This means, that some of the pictures should have the whole pattern in each side and corner of the image, as close to the border as possible and others should have the pattern near the center in various distances.
+
+
 
 The original OCamCalib Toolbox can be found [Here](https://sites.google.com/site/scarabotix/ocamcalib-toolbox) and its underlying principles are discussed in:
 <details>
