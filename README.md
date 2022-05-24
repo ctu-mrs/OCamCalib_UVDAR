@@ -2,9 +2,11 @@
 A modification of Davide Scaramuzza's OCamCalib Toolbox changed for calibration of UV-sensitive cameras using LED grid as calibration pattern.
 The grid should be non-square, and composed of LEDs emitting in the 395nm range.
 An example of such grid:
+
 ![](.fig/pattern_photo.jpg)
 
 If the camera is constructed correctly, the output image of the pattern should look like this:
+
 ![](.fig/camera_view.jpg)
 
 The tool itself is dependent on OpenCV.
@@ -15,7 +17,9 @@ make
 ```
 
 The tool itself is then used exactly as with chessboard-like calibration pattern, but instead of selecting `Extract grid corners`, select `Extract UV markers`:
-![](.fig/ui.jpg)
+
+![](.fig/ui.png)
+
 The LED markers are equivalent to internal corners of the chessboard grid.
 
 
