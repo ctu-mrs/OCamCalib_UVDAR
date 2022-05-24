@@ -1,5 +1,5 @@
 # OCamCalib_UVDAR
-A modification of Davide Scaramuzza's OCamCalib Toolbox changed for calibration of UV-sensitive cameras using LED grid as calibration pattern.
+A modification of Davide Scaramuzza's OCamCalib Toolbox changed for calibration of UV-sensitive cameras in the UVDAR system using LED grid as calibration pattern.
 The grid should be non-square, and composed of LEDs emitting in the 395nm range.
 An example of such grid:
 
