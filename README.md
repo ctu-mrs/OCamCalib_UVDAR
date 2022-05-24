@@ -9,7 +9,7 @@ If the camera is constructed correctly, the output image of the pattern should l
 
 ![](.fig/camera_view.jpg)
 
-The tool itself is dependent on OpenCV.
+The tool is dependent on OpenCV.
 To use the new functionality, you have to first build the grid extracting executable:
 ```
 cd autoMarkerFinder
