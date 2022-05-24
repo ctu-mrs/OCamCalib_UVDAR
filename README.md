@@ -7,6 +7,17 @@ An example of such grid:
 If the camera is constructed correctly, the output image of the pattern should look like this:
 ![](.fig/camera_view.jpg)
 
+The tool itself is dependent on OpenCV.
+To use the new functionality, you have to first build the grid extracting executable:
+```
+cd autoMarkerFinder
+make
+```
+
+The tool itself is then used exactly as with chessboard-like calibration pattern, but instead of selecting `Extract grid corners`, select `Extract UV markers`:
+![](.fig/ui.jpg)
+The LED markers are equivalent to internal corners of the chessboard grid.
+
 
 The original OCamCalib Toolbox can be found [Here](https://sites.google.com/site/scarabotix/ocamcalib-toolbox) and its underlying principles are discussed in:
 <details>
