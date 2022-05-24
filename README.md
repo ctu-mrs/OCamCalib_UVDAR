@@ -15,7 +15,7 @@ make
 ```
 
 The tool itself is then used exactly as with chessboard-like calibration pattern, but instead of selecting `Extract grid corners`, select `Extract UV markers`:
-![](.fig/ui.jpg)
+![](.fig/ui.png)
 The LED markers are equivalent to internal corners of the chessboard grid.
 
 
