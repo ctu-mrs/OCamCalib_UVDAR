@@ -28,7 +28,7 @@ This means, that some of the pictures should have the whole pattern in each side
 
 
 Published with permission from Davide Scaramuzza.
-The original OCamCalib Toolbox can be found [Here](https://sites.google.com/site/scarabotix/ocamcalib-toolbox) and its underlying principles are discussed in:
+The original OCamCalib Toolbox can be found [Here](https://sites.google.com/site/scarabotix/ocamcalib-omnidirectional-camera-calibration-toolbox-for-matlab) and its underlying principles are discussed in:
 <details>
 <summary>D. Scaramuzza, A. Martinelli and R. Siegwart, "A Toolbox for Easily Calibrating Omnidirectional Cameras," 2006 IEEE/RSJ International Conference on Intelligent Robots and Systems, 2006, pp. 5695-5701, doi: 10.1109/IROS.2006.282372.</summary>
 
