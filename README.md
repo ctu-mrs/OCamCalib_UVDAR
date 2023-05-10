@@ -3,7 +3,9 @@ A modification of Davide Scaramuzza's OCamCalib Toolbox changed for calibration 
 The grid should be non-square, and composed of LEDs emitting in the 395nm range.
 An example of such grid:
 
-![](.fig/pattern_photo.jpg)
+![](.fig/pattern_off.jpg)
+![](.fig/pattern_on.jpg)
+![](.fig/pattern_backside.jpg)
 
 If the camera is constructed correctly, the output image of the pattern should look like this:
 
