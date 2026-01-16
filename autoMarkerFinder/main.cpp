@@ -127,6 +127,8 @@ int main( int argc, char** argv )
 		}
 	}
 
+  std::cout << "filename: " << input_filename << std::endl;
+
 
 	// Close error message file
 	error.close();
@@ -171,21 +173,20 @@ int main( int argc, char** argv )
     cv::Size text_size = {0,0};
 		int base_line = 0;
 		// Load the correct image...
-    /* std::cout << imagename << std::endl; */
-		if( f && fgets( imagename, sizeof(imagename)-2, f ))
-		{
+		/* if( f && fgets( imagename, sizeof(imagename)-2, f )) */
+		/* { */
 
-			int l = (int) strlen(imagename);
-			if( l > 0 && imagename[l-1] == '\n' )
-				imagename[--l] = '\0';
-			if( l > 0 )
-			{
-				if( imagename[0] == '#' )
-					return -1;
+		/* 	int l = (int) strlen(imagename); */
+		/* 	if( l > 0 && imagename[l-1] == '\n' ) */
+		/* 		imagename[--l] = '\0'; */
+		/* 	if( l > 0 ) */
+		/* 	{ */
+		/* 		if( imagename[0] == '#' ) */
+		/* 			return -1; */
 				// Load as BGR 3 channel image
-        std::cout << "Loading image: " << imagename << std::endl;
-				view = cv::imread(imagename);
-        cv::cvtColor( view, view, cv::COLOR_BGR2GRAY );
+    std::cout << "Loading image: " << input_filename << std::endl;
+    view = cv::imread(input_filename);
+    cv::cvtColor( view, view, cv::COLOR_BGR2GRAY );
 				// Currently the following file formats are supported: 
 				// Windows bitmaps				BMP, DIB
 				// JPEG files					JPEG, JPG, JPE
@@ -194,10 +195,10 @@ int main( int argc, char** argv )
 				// Sun rasters					SR, RAS
 				// TIFF files					TIFF, TIF
 				// NOTABLY: GIF IS NOT SUPPORTED!
-			}
-		}
+			/* } */
+		/* } */
 
-    std::cout << imagename << std::endl;
+    std::cout << input_filename << std::endl;
 
 
 		// ...Or capture the correct frame from the video
