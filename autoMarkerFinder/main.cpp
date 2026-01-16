@@ -1,40 +1,40 @@
 /************************************************************************************\
-    This is improved variant of chessboard corner detection algorithm that
-    uses a graph of connected quads. It is based on the code contributed
-    by Vladimir Vezhnevets and Philip Gruebele.
-    Here is the copyright notice from the original Vladimir's code:
-    ===============================================================
+  This is improved variant of chessboard corner detection algorithm that
+  uses a graph of connected quads. It is based on the code contributed
+  by Vladimir Vezhnevets and Philip Gruebele.
+  Here is the copyright notice from the original Vladimir's code:
+  ===============================================================
 
-    The algorithms developed and implemented by Vezhnevets Vldimir
-    aka Dead Moroz (vvp@graphics.cs.msu.ru)
-    See http://graphics.cs.msu.su/en/research/calibration/opencv.html
-    for detailed information.
+  The algorithms developed and implemented by Vezhnevets Vldimir
+  aka Dead Moroz (vvp@graphics.cs.msu.ru)
+  See http://graphics.cs.msu.su/en/research/calibration/opencv.html
+  for detailed information.
 
-    Reliability additions and modifications made by Philip Gruebele.
-    <a href="mailto:pgruebele@cox.net">pgruebele@cox.net</a>
+  Reliability additions and modifications made by Philip Gruebele.
+  <a href="mailto:pgruebele@cox.net">pgruebele@cox.net</a>
 
-	His code was adapted for use with low resolution and omnidirectional cameras
-	by Martin Rufli during his Master Thesis under supervision of Davide Scaramuzza, at the ETH Zurich. Further enhancements include:
-		- Increased chance of correct corner matching.
-		- Corner matching over all dilation runs.
-		
-If you use this code, please cite the following articles:
+  His code was adapted for use with low resolution and omnidirectional cameras
+  by Martin Rufli during his Master Thesis under supervision of Davide Scaramuzza, at the ETH Zurich. Further enhancements include:
+  - Increased chance of correct corner matching.
+  - Corner matching over all dilation runs.
 
-1. Scaramuzza, D., Martinelli, A. and Siegwart, R. (2006), A Toolbox for Easily Calibrating Omnidirectional Cameras, Proceedings of the IEEE/RSJ International Conference on Intelligent Robots and Systems  (IROS 2006), Beijing, China, October 2006.
-2. Scaramuzza, D., Martinelli, A. and Siegwart, R., (2006). "A Flexible Technique for Accurate Omnidirectional Camera Calibration and Structure from Motion", Proceedings of IEEE International Conference of Vision Systems  (ICVS'06), New York, January 5-7, 2006.
-3. Rufli, M., Scaramuzza, D., and Siegwart, R. (2008), Automatic Detection of Checkerboards on Blurred and Distorted Images, Proceedings of the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS 2008), Nice, France, September 2008.
+  If you use this code, please cite the following articles:
 
-\************************************************************************************/
+  1. Scaramuzza, D., Martinelli, A. and Siegwart, R. (2006), A Toolbox for Easily Calibrating Omnidirectional Cameras, Proceedings of the IEEE/RSJ International Conference on Intelligent Robots and Systems  (IROS 2006), Beijing, China, October 2006.
+  2. Scaramuzza, D., Martinelli, A. and Siegwart, R., (2006). "A Flexible Technique for Accurate Omnidirectional Camera Calibration and Structure from Motion", Proceedings of IEEE International Conference of Vision Systems  (ICVS'06), New York, January 5-7, 2006.
+  3. Rufli, M., Scaramuzza, D., and Siegwart, R. (2008), Automatic Detection of Checkerboards on Blurred and Distorted Images, Proceedings of the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS 2008), Nice, France, September 2008.
+
+  \************************************************************************************/
 
 
 // Includes
 #include <cstdlib>
 #include <iostream>
 
-#include <opencv2/core/core.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/imgcodecs/imgcodecs.hpp>
-#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/opencv.hpp>
+#include <opencv2/highgui/highgui_c.h>
+#include <opencv2/imgproc/imgproc_c.h>
+#include <opencv2/videoio/videoio_c.h>
 
 #include <unistd.h>
 #include <stdio.h>
@@ -45,7 +45,13 @@ If you use this code, please cite the following articles:
 using namespace std;
 using std::ifstream;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 #include "cvcalibinit3.h"
+#ifdef __cplusplus
+}
+#endif
 //===========================================================================
 // MAIN LOOP 
 //===========================================================================
@@ -57,200 +63,111 @@ int main( int argc, char** argv )
   getcwd(cwd, sizeof(cwd));
   std::cout << "CWD: " << cwd << std::endl;
 
-	// CHOOSE METHOD (0= Vladimir Vezhnevets, 1= Martin Rufli)
-	int method = 1;
-
-
-	// Initializations
-  cv::Size board_size				= {7,6};
-	const char* input_filename		= 0;
-  /* CvCapture* capture				= 0; */
-	FILE* f							= 0;
-	char imagename[1024];
-	/* CvMemStorage* storage; */
-  /* CvSeq* image_points_seq			= 0; */
-	int elem_size;
-  std::vector<cv::Point2f> image_points_buf;
-  cv::Size img_size					= {0,0};
-	int found						= -2;
-	int min_number_of_corners		= 42;
-	input_filename					= "pictures.txt";
-	//input_filename					= "myVideo2.avi";
-
-	// Create error message file
-	ofstream error("outputImages/error.txt");
-
-
+  // Initializations
+  cv::Size board_size = {7, 6};
+  const char* input_filename = "pictures.txt";
+  FILE* f = nullptr;
+  char imagename[1024];
+  std::vector<cv::Point2f> image_points_buf; // Matches cvcalibinit3.h
+  int found = -2;
+  int min_number_of_corners = 42;
   bool DEBUG = true;
-	// Read the "argv" function input arguments
-	for(int i = 1; i < argc; i++ )
-	{
-		const char* s = argv[i];
-		if( strcmp( s, "-w" ) == 0 )
-		{
-			if( sscanf( argv[++i], "%u", &board_size.width ) != 1 || board_size.width <= 0 )
-			{
-				error << "Invalid board width" << endl;
-				error.close();
-				return -1;
-			}
-		}
-		else if( strcmp( s, "-h" ) == 0 )
-		{
-			if( sscanf( argv[++i], "%u", &board_size.height ) != 1 || board_size.height <= 0 )
-			{
-				error << "Invalid board height" << endl;
-				error.close();
-				return -1;
-			}
-		}
-		else if( strcmp( s, "-m" ) == 0 )
-		{
-			if( sscanf( argv[++i], "%u", &min_number_of_corners ) != 1 )
-			{
-				error << "Invalid minimal number of corners" << endl;
-				error.close();
-				return -1;
-			}
-		}
-		else if( strcmp( s, "-q" ) == 0 )
-		{
+
+  // Create error message file
+  std::ofstream error("outputImages/error.txt");
+
+  // Read the "argv" function input arguments
+  for(int i = 1; i < argc; i++ )
+  {
+    const char* s = argv[i];
+    if( strcmp( s, "-w" ) == 0 )
+    {
+      if( sscanf( argv[++i], "%u", &board_size.width ) != 1 || board_size.width <= 0 )
+      {
+        error << "Invalid board width" << endl;
+        error.close();
+        return -1;
+      }
+    }
+    else if( strcmp( s, "-h" ) == 0 )
+    {
+      if( sscanf( argv[++i], "%u", &board_size.height ) != 1 || board_size.height <= 0 )
+      {
+        error << "Invalid board height" << endl;
+        error.close();
+        return -1;
+      }
+    }
+    else if( strcmp( s, "-m" ) == 0 )
+    {
+      if( sscanf( argv[++i], "%u", &min_number_of_corners ) != 1 )
+      {
+        error << "Invalid minimal number of corners" << endl;
+        error.close();
+        return -1;
+      }
+    }
+    else if( strcmp( s, "-q" ) == 0 )
+    {
       DEBUG = false;
-		}
-		else if( s[0] != '-' )
-			input_filename = s;
-		else
-		{
-				error << "Unknown option" << endl;
-				error.close();
-				return -1;
-		}
-	}
+    }
+    else if( s[0] != '-' )
+      input_filename = s;
+    else
+    {
+      error << "Unknown option" << endl;
+      error.close();
+      return -1;
+    }
+  }
 
   std::cout << "filename: " << input_filename << std::endl;
 
 
-	// Close error message file
-	error.close();
+  if( input_filename )
+  {
+    f = fopen( input_filename, "rt" );
+    if( !f ) {
+      error << "The input file could not be opened" << endl;
+      return fprintf( stderr, "The input file could not be opened\n" ), -1;
+    }
+  }
 
+  while (f && fgets(imagename, sizeof(imagename) - 2, f)) 
+  {
+    int l = (int)strlen(imagename);
+    if (l > 0 && imagename[l - 1] == '\n')
+      imagename[--l] = '\0';
 
-	// Figure out what kind of image input needs to be prepared
-	if( input_filename )
-	{
-		// Try to open a video sequence
-		//capture = cvCreateFileCapture( input_filename ); //OBRAND commented out
-		/* if( !capture ) */
-		/* { */
-			// Try to open an input image
-			f = fopen( input_filename, "rt" );
-			if( !f )
-				return fprintf( stderr, "The input file could not be opened\n" ), -1;
-		/* } */
-	}
-	/* else */
-	/* 	// Open a live video stream */
-	/* 	capture = cvCreateCameraCapture(0); */
+    if (l > 0 && imagename[0] != '#') // Skip comments
+    {
+      std::cout << "Loading image: " << imagename << std::endl;
+      cv::Mat view = cv::imread(imagename, cv::IMREAD_COLOR);
 
+      if (view.empty()) {
+        std::cerr << "Could not load image: " << imagename << std::endl;
+        continue;
+      }
 
-	// Nothing could be opened -> error
-	if( !f )
-		return fprintf( stderr, "Could not obtain input\n" ), -2;
+      // The detector specifically requires a grayscale image
+      cv::Mat view_gray;
+      cv::cvtColor(view, view_gray, cv::COLOR_BGR2GRAY);
 
-	
-	// Allocate memory
-	/* elem_size = board_size.width*board_size.height*sizeof(image_points_buf[0]); */
-	/* storage = cvCreateMemStorage( MAX( elem_size*4, 1 << 16 )); */
-	/* image_points_buf = (cv::Point2f*)cvAlloc( elem_size ); */
-	/* image_points_seq = cvCreateSeq( 0, sizeof(cv::Seq), elem_size, storage ); */
+      // Call your improved detector
+      int count = 0;
+      found = cvFindUVMarkers(view_gray, board_size,
+          image_points_buf, &count, 
+          min_number_of_corners, DEBUG);
 
+      // Original behavior: if ESC is pressed, stop processing
+      int key = cv::waitKey(10);
+      if (key == 27) break; 
+    }
+  }
 
-  // For loop which goes through all images specified above
-	/* for(int j = 1;j<2; j++) */
-	{
-		// Initializations
-    cv::Mat view, view_gray;
-		int count = 0, blink = 0;
-    cv::Size text_size = {0,0};
-		int base_line = 0;
-		// Load the correct image...
-		/* if( f && fgets( imagename, sizeof(imagename)-2, f )) */
-		/* { */
+  // Cleanup
+  if (f) fclose(f);
+  error.close();
 
-		/* 	int l = (int) strlen(imagename); */
-		/* 	if( l > 0 && imagename[l-1] == '\n' ) */
-		/* 		imagename[--l] = '\0'; */
-		/* 	if( l > 0 ) */
-		/* 	{ */
-		/* 		if( imagename[0] == '#' ) */
-		/* 			return -1; */
-				// Load as BGR 3 channel image
-    std::cout << "Loading image: " << input_filename << std::endl;
-    view = cv::imread(input_filename);
-    cv::cvtColor( view, view, cv::COLOR_BGR2GRAY );
-				// Currently the following file formats are supported: 
-				// Windows bitmaps				BMP, DIB
-				// JPEG files					JPEG, JPG, JPE
-				// Portable Network Graphics	PNG
-				// Portable image format		PBM, PGM, PPM
-				// Sun rasters					SR, RAS
-				// TIFF files					TIFF, TIF
-				// NOTABLY: GIF IS NOT SUPPORTED!
-			/* } */
-		/* } */
-
-    std::cout << input_filename << std::endl;
-
-
-		// ...Or capture the correct frame from the video
-		/* else if( capture ) */
-		/* { */
-		/* 	IplImage* view0 = cvQueryFrame( capture ); */
-		/* 	if( view0 ) */
-		/* 	{ */
-		/* 		view = cvCreateImage( cvGetSize(view0), IPL_DEPTH_8U, view0->nChannels ); */
-		/* 		if( view0->origin == IPL_ORIGIN_BL ) */
-		/* 			cvFlip( view0, view, 0 ); */
-		/* 		else */
-		/* 			cvCopy( view0, view ); */
-		/* 	} */
-		/* } */
-
-		
-		// If no more images are to be processed -> break
-		if( view.size == 0)
-		{
-			return -1;
-		}
-
-		// If esc key was pressed -> break
-		/* int key = cv::waitKey(10); */
-		/* if( key == 27) */
-		/* { */
-		/* 	break; */
-		/* } */
-
-		img_size = view.size();
-		
-
-		// Perform the corner finding algorithm
-		// 0 = old method, 1 = New method by Martin Rufli
-		if (method == 0)
-		{
-			//found = cvFindChessboardCorners1( view, board_size,
-			//		image_points_buf, &count, CV_CALIB_CB_ADAPTIVE_THRESH );
-		}
-		else
-		{
-			found = cvFindUVMarkers( view, board_size,
-					image_points_buf, &count, min_number_of_corners, DEBUG );
-		}
-
-		if( view.size == 0 )
-			return -1;
-	}
-
-	/* if( capture ) */
-	/* 	cvReleaseCapture( &capture ); */
-	
-	return found;
+  return found;
 }

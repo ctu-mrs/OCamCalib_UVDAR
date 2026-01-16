@@ -169,6 +169,8 @@ static int mrWriteMarkers(GridPoint*& grid_points, bool x_axis_first, cv::Size p
 //===========================================================================
 // MAIN FUNCTION
 //===========================================================================
+extern "C" {
+
 int cvFindUVMarkers( cv::InputArray arr, cv::Size pattern_size,
                              std::vector<cv::Point2f> out_corners, int* out_corner_count,
                              int min_number_of_corners, bool set_debug )
@@ -389,6 +391,8 @@ int cvFindUVMarkers( cv::InputArray arr, cv::Size pattern_size,
 	//  1  ->	Enough corners were found
     return found;
 }
+
+} // End of extern "C"
 
 
 //===========================================================================

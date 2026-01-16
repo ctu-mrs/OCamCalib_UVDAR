@@ -1,0 +1,11 @@
+../../bluefox_fisheye_uv_markers_test/image_01.jpg
+../../bluefox_fisheye_uv_markers_test/image_02.jpg
+../../bluefox_fisheye_uv_markers_test/image_03.jpg
+../../bluefox_fisheye_uv_markers_test/image_04.jpg
+../../bluefox_fisheye_uv_markers_test/image_05.jpg
+../../bluefox_fisheye_uv_markers_test/image_06.jpg
+../../bluefox_fisheye_uv_markers_test/image_07.jpg
+../../bluefox_fisheye_uv_markers_test/image_08.jpg
+../../bluefox_fisheye_uv_markers_test/image_09.jpg
+../../bluefox_fisheye_uv_markers_test/image_10.jpg
+../../bluefox_fisheye_uv_markers_test/image_11.jpg
